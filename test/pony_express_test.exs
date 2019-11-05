@@ -7,8 +7,8 @@ defmodule PonyExpressTest do
 
   @localhost {127, 0, 0, 1}
 
-  test "full stack pony express experience" do
-    # create a pubsub locally
+  test "full stack pony express experience, but unencryped (for testing)" do
+    # create pubsubs locally
     PubSub.PG2.start_link(:test_src, [])
     PubSub.PG2.start_link(:test_tgt, [])
 
@@ -35,19 +35,31 @@ defmodule PonyExpressTest do
     assert_receive :ping, 500
   end
 
+  @ca_certfile     Path.expand("test_ssl_assets/rootCA.pem")
+  @srv_certfile    Path.expand("test_ssl_assets/server.cert")
+  @srv_keyfile     Path.expand("test_ssl_assets/server.key")
+  @client_certfile Path.expand("test_ssl_assets/client.cert")
+  @client_keyfile  Path.expand("test_ssl_assets/client.key")
+
   @tag :tls
   test "pony express with ssl activated" do
-    # create a pubsub locally
+    # create pubsubs locally
     PubSub.PG2.start_link(:test_ssl_src, [])
     PubSub.PG2.start_link(:test_ssl_tgt, [])
 
     PubSub.subscribe(:test_ssl_tgt, "pony_express")
 
-    Daemon.start_link(pubsub_server: :test_ssl_src)
+    Daemon.start_link(pubsub_server: :test_ssl_src,
+                      ssl_opts: [cacertfile: @ca_certfile,
+                                 certfile: @srv_certfile,
+                                 keyfile: @srv_keyfile])
 
     Client.start_link(server: @localhost,
                       topic: "pony_express",
-                      pubsub_server: :test_ssl_tgt)
+                      pubsub_server: :test_ssl_tgt,
+                      ssl_opts: [cacertfile: @ca_certfile,
+                                 certfile: @client_certfile,
+                                 keyfile: @client_keyfile])
 
     # give the system some time to settle.
     # TODO: make this a call query on the client.

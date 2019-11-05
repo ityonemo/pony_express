@@ -1,5 +1,38 @@
 defmodule PonyExpress.Daemon do
 
+  @moduledoc """
+  GenServer which listens on a TCP port waiting for inbound TLS connections.
+
+  These connections are then forwarded to `PonyExpress.Server` servers which
+  then handle `Phoenix.PubSub` transactions between server and client nodes.
+  Only one PubSub server may be bound to any given port.  If you need to forward
+  multiple PubSub servers, you will need to listen on multiple ports.
+
+  ### Usage
+
+  Typically, you will want to start the daemon supervised in the application
+  supervision tree as follows:
+
+  ```elixir
+  PonyExpress.Daemon.start_supervised(
+    PonyExpress.Daemon.Supervisor,
+    server_supervisor: PonyExpress.Server.Supervisor,
+    pubsub_server: <pubsub>,
+    ssl_opts: [
+      cacertfile: <ca_certfile>
+      certfile: <certfile>
+      keyfile: <keyfile>
+    ])
+  ```
+
+  the following parameters are required:
+  - `:pubsub_server` - the atom describing the Phoenix PubSub server.
+  - `:ssl_opts` - cerificate authority pem file, server certificate, and server key.
+
+  the following parameter might be useful:
+  - `:port` - port to listen on.  Defaults to 1860, a value of 0 will pick "any available port"
+  """
+
   use GenServer
 
   defstruct [
@@ -7,14 +40,22 @@ defmodule PonyExpress.Daemon do
     sock: nil,
     timeout: 1000,
     pubsub_server: nil,
-    protocol: PonyExpress.Tls
+    protocol: PonyExpress.Tls,
+    ssl_opts: nil
   ]
 
+  @typedoc false
   @type state :: %__MODULE__{
     port: :inet.port_number,
     sock: port,
     timeout: timeout,
-    pubsub_server: GenServer.server
+    pubsub_server: GenServer.server,
+    protocol: module,
+    ssl_opts: [
+      cacertfile: Path.t,
+      certfile: Path.t,
+      keyfile: Path.t
+    ]
   }
 
   @spec start_link(keyword) :: GenServer.on_start
@@ -22,6 +63,7 @@ defmodule PonyExpress.Daemon do
     GenServer.start_link(__MODULE__, opts)
   end
 
+  @doc false
   @spec init(keyword) :: {:ok, state} | {:stop, :error}
   def init(opts) do
     state = struct(__MODULE__, opts)
@@ -66,7 +108,8 @@ defmodule PonyExpress.Daemon do
          {:ok, srv_pid} <- PonyExpress.Server.start_link(
                              sock: child_sock,
                              pubsub_server: state.pubsub_server,
-                             protocol: state.protocol) do
+                             protocol: state.protocol,
+                             ssl_opts: state.ssl_opts) do
       # transfer ownership to the child server.
       :gen_tcp.controlling_process(child_sock, srv_pid)
       # signal to the child server that the ownership has been transferred.

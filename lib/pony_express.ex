@@ -1,5 +1,3 @@
 defmodule PonyExpress do
-  @moduledoc """
-  Documentation for PonyExpress.
-  """
+  @moduledoc false
 end

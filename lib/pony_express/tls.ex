@@ -1,35 +1,37 @@
 defmodule PonyExpress.Tls do
 
+  @moduledoc """
+  default module for dropping in TLS over the erlang sockets library.
+
+  the TLS protocol has a very convienient way of upgrading to an SSL
+  connection.  This enables the use of the common `:gen_tcp` library except:
+
+  - on the server side, a `handshake` directive allows the client to negotiate
+  an upgrade to a secure `tls` connection.  Although tls does support one-way
+  encryption, since `PonyExpress` requires two-way encryption, the handshake
+  enforces peer verfication.
+
+  - on the client side, an `upgrade` directive which negotiates an unencrypted
+  `:tcp` socket's connection to an encrypted `tls` connection.
+  """
+
   @behaviour PonyExpress.ConnectionAPI
 
-  @client_cacert Path.expand("./test_ssl_assets/rootCA.pem")
-  @client_cert Path.expand("./test_ssl_assets/client.cert")
-  @client_key Path.expand("./test_ssl_assets/client.key")
-
-  @server_cacert Path.expand("./test_ssl_assets/rootCA.pem")
-  @server_cert Path.expand("./test_ssl_assets/server.cert")
-  @server_key Path.expand("./test_ssl_assets/server.key")
-
-  @spec upgrade(:inet.socket) :: :ssl.sslsocket
-  def upgrade(sock) do
-    case :ssl.connect(sock,
-      cacertfile: @client_cacert,
-      certfile: @client_cert,
-      keyfile: @client_key) do
+  @spec upgrade(:inet.socket, keyword) :: :ssl.sslsocket
+  def upgrade(sock, ssl_opts) do
+    case :ssl.connect(sock, ssl_opts) do
 
     {:ok, sock} -> sock
     _ -> raise "ssl socket upgrade error"
     end
   end
 
-  @spec handshake(:inet.socket) :: :ssl.sslsocket
-  def handshake(sock) do
+  @spec handshake(:inet.socket, keyword) :: :ssl.sslsocket
+  def handshake(sock, ssl_opts) do
     case :ssl.handshake(sock,
-      cacertfile: @server_cacert,
-      certfile: @server_cert,
-      keyfile: @server_key,
+      ssl_opts ++ [
       verify: :verify_peer,
-      fail_if_no_peer_cert: true) do
+      fail_if_no_peer_cert: true]) do
     {:ok, sock} -> sock
     _ -> raise "ssl handshake error"
     end

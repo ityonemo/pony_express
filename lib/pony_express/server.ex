@@ -1,33 +1,45 @@
 defmodule PonyExpress.Server do
 
+  @moduledoc false
+
   defstruct [
     pubsub_server: nil,
     sock: nil,
     topic: nil,
-    protocol: PonyExpress.Tls
+    protocol: PonyExpress.Tls,
+    ssl_opts: nil
   ]
 
   @type state :: %__MODULE__{
     pubsub_server: GenServer.server,
     sock: port,
     topic: String.t | nil,
-    protocol: module
+    protocol: module,
+    ssl_opts: [
+      cacertfile: Path.t,
+      certfile: Path.t,
+      keyfile: Path.t
+    ]
   }
 
+  @spec start_link(keyword) :: GenServer.on_start
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
   end
 
+  @spec init(keyword) :: {:ok, state}
   def init(opts) do
     state = struct(__MODULE__, opts)
     {:ok, state}
   end
 
+  @spec allow(GenServer.server) :: {:reply, :ok, state} | {:stop, any, :error, state}
   def allow(srv), do: GenServer.call(srv, :allow)
   defp allow_impl(state = %{protocol: protocol}) do
     # perform ssl handshake, upgrade to TLS.
-    upgraded_sock = protocol.handshake(state.sock)
-    # next, wait for the subscription signal and
+    upgraded_sock = protocol.handshake(state.sock, state.ssl_opts)
+    # next, wait for the subscription signal and set up the phoenix
+    # pubsub subscriptions.
     with {:ok, data} <- protocol.recv(upgraded_sock, 0, 1000),
          {:subscribe, topic} <- :erlang.binary_to_term(data) do
       Phoenix.PubSub.subscribe(state.pubsub_server, topic)
