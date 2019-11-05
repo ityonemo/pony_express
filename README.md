@@ -87,6 +87,8 @@ first, make the directory `test_ssl_assets`.
 
 In this directory, perform the following steps:
 
+### Make your own CA
+
 - generate 2048-bit rsa key for the root CA.
   ```
   openssl genrsa -des3 -out rootCA.key 2048
@@ -96,6 +98,8 @@ In this directory, perform the following steps:
   ```
   openssl req -x509 -new -nodes -key rootCA.key -sha256 -days 1024 -out rootCA.pem
   ```
+
+### Authenticate your server with the CA
 
 - generate cert rsa key (this shouldn't have a password)
   ```
@@ -115,7 +119,9 @@ In this directory, perform the following steps:
   openssl x509 -req -in server.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateserial -out server.cert -days 500 -sha256
   ```
 
-- repeat the process for the client.
+### Authenticate your client with the CA
+
+- the process is repeated basically verbatim.
   ```
   openssl genrsa -out client.key 2048
   openssl req -new -key client.key -out client.csr
