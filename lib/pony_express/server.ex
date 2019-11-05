@@ -27,6 +27,16 @@ defmodule PonyExpress.Server do
     GenServer.start_link(__MODULE__, opts)
   end
 
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :worker,
+      restart: :temporary,
+      shutdown: 500
+    }
+  end
+
   @spec init(keyword) :: {:ok, state}
   def init(opts) do
     state = struct(__MODULE__, opts)

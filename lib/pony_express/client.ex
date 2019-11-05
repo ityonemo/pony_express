@@ -1,8 +1,10 @@
 defmodule PonyExpress.Client do
 
   @moduledoc """
-  GenServer which initiates a TLS connection to a remote server and forwards
-  `Phoenix.PubSub` subscription across the TLS connection.
+  GenServer which initiates a TLS connection to a remote `Phoenix.PubSub`
+  server and forwards the subscription across the TLS connection to a local
+  PubSub server.  Note that PubSub messages are forwarded in one direction
+  only, from client to server.
 
   Note:  A client may be bound to a single remote server, and a single
   topic on a single PubSub server bound to that TCP port by the remote's
@@ -14,11 +16,11 @@ defmodule PonyExpress.Client do
   ### Usage
 
   Typically, you will want to start the client supervised in the application
-  supervision tree as follows:
+  supervision tree as follows (or equivalent):
 
   ```elixir
-  PonyExpress.Client.start_supervised(
-    PonyExpress.Client.Supervisor,
+  DynamicSupervisor.start_child({
+    SomeSupervisor,
     server: <server IP>,
     topic: "<pubsub topic>",
     pubsub_server: <pubsub>,
@@ -26,11 +28,15 @@ defmodule PonyExpress.Client do
       cacertfile: <ca_certfile>
       certfile: <certfile>
       keyfile: <keyfile>
-    ])
+    ]})
+  )
   ```
 
-  `PonyExpress.Client.Supervisor` should probably be a named `DynamicSupervisor`
-  in most cases.
+  the following parameters are required:
+  - `:pubsub_server` - the atom describing the Phoenix PubSub server.
+  - `:topic` - a string which describes the topic remotely subscribed to.
+  - `:ssl_opts` - cerificate authority pem file, client certificate, and
+    client key.
   """
 
   defstruct [
@@ -63,6 +69,16 @@ defmodule PonyExpress.Client do
   @spec start_link(keyword) :: GenServer.on_start
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
+  end
+
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :worker,
+      restart: :transient,
+      shutdown: 500
+    }
   end
 
   @impl true
@@ -102,7 +118,11 @@ defmodule PonyExpress.Client do
         Process.send_after(self(), :recv, 0)
         {:noreply, state}
       {:error, :closed} ->
-        {:stop, :normal, state}
+        # we don't expect the remote side to close the connection.
+        # this should trigger the client to attempt to reheal the
+        # connection by restarting and triggering a reconnection
+        # via `init/1`
+        {:stop, :closed, state}
     end
   end
 
