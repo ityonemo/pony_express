@@ -8,7 +8,10 @@ defmodule PonyExpress.MixProject do
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      elixirc_paths: elixirc_paths(Mix.env)
+      elixirc_paths: elixirc_paths(Mix.env),
+      description: "securely extend phoenix pubsub over SSL",
+      package: package(),
+      source_url: "https://github.com/ityonemo/pony_express"
     ]
   end
 
@@ -26,8 +29,14 @@ defmodule PonyExpress.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ex_doc, "~> 0.21.2"},
+      {:ex_doc, "~> 0.21.2", only: :dev, runtime: :false},
       {:phoenix_pubsub, "~> 1.1"}
     ]
   end
+
+  defp package, do: [
+    name: "pony_express",
+    licenses: ["MIT"],
+    links: %{"GitHub" => "https://github.com/ityonemo/pony_express"}
+  ]
 end
