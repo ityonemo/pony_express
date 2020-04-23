@@ -34,12 +34,12 @@ defmodule PonyExpress.OtpTest do
 
         {:ok, daemon_sup} = Supervisor.start_link([{Daemon,
           pubsub_server: :otp_srv_1,
-          protocol: PonyExpress.Tcp,
           server_supervisor: SrvSupervisor1
         }], strategy: :one_for_one)
 
         [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
 
+        port = PonyExpress.Daemon.port(daemon_pid)
 
         DynamicSupervisor.start_link(strategy: :one_for_one, name: CliSupervisor1)
 
@@ -47,10 +47,10 @@ defmodule PonyExpress.OtpTest do
         {:ok, _client_pid} = DynamicSupervisor.start_child(
           CliSupervisor1,
           {Client,
+            port: port,
             server: @localhost,
             pubsub_server: :otp_cli_1,
             topic: "otp_test_1",
-            protocol: PonyExpress.Tcp,
           })
 
         send(test_pid, {:daemon, daemon_pid})
@@ -93,9 +93,7 @@ defmodule PonyExpress.OtpTest do
         DynamicSupervisor.start_link(strategy: :one_for_one, name: SrvSupervisor2)
 
         {:ok, daemon_sup} = Supervisor.start_link([{Daemon,
-          port: 0,
           pubsub_server: :otp_srv_2,
-          protocol: PonyExpress.Tcp,
           server_supervisor: SrvSupervisor2
         }], strategy: :one_for_one)
 
@@ -112,7 +110,6 @@ defmodule PonyExpress.OtpTest do
             port: port,
             pubsub_server: :otp_cli_2,
             topic: "otp_test_2",
-            protocol: PonyExpress.Tcp,
           })
 
         # wait for the connection to complete.
@@ -165,9 +162,7 @@ defmodule PonyExpress.OtpTest do
         DynamicSupervisor.start_link(strategy: :one_for_one, name: SrvSupervisor3)
 
         {:ok, daemon_sup} = Supervisor.start_link([{Daemon,
-          port: 0,
           pubsub_server: :otp_srv_3,
-          protocol: PonyExpress.Tcp,
           server_supervisor: SrvSupervisor3
         }], strategy: :one_for_one)
 
@@ -184,7 +179,6 @@ defmodule PonyExpress.OtpTest do
             port: port,
             pubsub_server: :otp_cli_3,
             topic: "otp_test_3",
-            protocol: PonyExpress.Tcp,
           })
 
         send(test_pid, {:client, client_pid})

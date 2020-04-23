@@ -4,7 +4,7 @@ defmodule PonyExpress.Client do
   GenServer which initiates a TLS connection to a remote `Phoenix.PubSub`
   server and forwards the subscription across the TLS connection to a local
   PubSub server.  Note that PubSub messages are forwarded in one direction
-  only, from client to server.
+  only, from server to client.
 
   Note:  A client may be bound to a single remote server, and a single
   topic on a single PubSub server bound to that TCP port by the remote's
@@ -24,7 +24,7 @@ defmodule PonyExpress.Client do
     server: <server IP>,
     topic: "<pubsub topic>",
     pubsub_server: <pubsub>,
-    ssl_opts: [
+    tls_opts: [
       cacertfile: <ca_certfile>
       certfile: <certfile>
       keyfile: <keyfile>
@@ -35,18 +35,24 @@ defmodule PonyExpress.Client do
   the following parameters are required:
   - `:pubsub_server` - the atom describing the Phoenix PubSub server.
   - `:topic` - a string which describes the topic remotely subscribed to.
-  - `:ssl_opts` - cerificate authority pem file, client certificate, and
+  - `:tls_opts` - cerificate authority pem file, client certificate, and
     client key.
   """
 
+  if Mix.env in [:dev, :test] do
+    @default_transport Erps.Transport.Tcp
+  else
+    @default_transport Application.get_env(:pony_express, :transport, Erps.Transport.Tls)
+  end
+
   defstruct [
     server: nil,
-    port: 1860,
+    port: 0,
     sock: nil,
     pubsub_server: nil,
     topic: nil,
-    protocol: PonyExpress.Tls,
-    ssl_opts: nil
+    transport: @default_transport,
+    tls_opts: []
   ]
 
   @typedoc false
@@ -56,19 +62,23 @@ defmodule PonyExpress.Client do
     sock: port,
     pubsub_server: GenServer.server,
     topic: String.t,
-    protocol: module,
-    ssl_opts: [
-      cacertfile: Path.t,
-      certfile: Path.t,
-      keyfile: Path.t
-    ]
+    transport: module,
+    tls_opts: keyword
   }
 
   use GenServer
 
+  @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after]
+
+  def start(opts) do
+    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
+    GenServer.start(__MODULE__, inner_opts, gen_server_opts)
+  end
+
   @spec start_link(keyword) :: GenServer.on_start
   def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts)
+    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
+    GenServer.start_link(__MODULE__, inner_opts, gen_server_opts)
   end
 
   def child_spec(opts) do
@@ -86,30 +96,31 @@ defmodule PonyExpress.Client do
   @spec init(keyword) :: {:ok, state} | {:stop, any}
   def init(opts) do
     state = struct(__MODULE__, opts)
-    case :gen_tcp.connect(state.server, state.port, [:binary, active: false]) do
-      {:ok, sock} ->
-        # immediately upgrade to TLS, then send a subscription
-        # request down to the server.
-        upgraded_sock = state.protocol.upgrade(sock, state.ssl_opts)
-        new_state = %{state | sock: upgraded_sock}
-        send_term(new_state, {:subscribe, state.topic})
-        Process.send_after(self(), :recv, 0)
-        {:ok, new_state}
+
+    transport = state.transport
+
+    with {:ok, sock} <- transport.connect(state.server, state.port, [:binary, active: false]),
+         {:ok, upgraded} <- transport.upgrade(sock, state.tls_opts) do
+      new_state = %{state | sock: upgraded}
+      send_term(new_state, {:subscribe, state.topic})
+      Process.send_after(self(), :recv, 0)
+      {:ok, new_state}
+    else
       {:error, reason} ->
         {:stop, reason}
     end
   end
 
   @spec send_term(state, term) :: any
-  defp send_term(state = %{protocol: protocol}, data) do
-    protocol.send(state.sock, :erlang.term_to_binary(data))
+  defp send_term(state = %{transport: transport}, data) do
+    transport.send(state.sock, :erlang.term_to_binary(data))
   end
 
   @impl true
   @spec handle_info(:recv, state) :: {:noreply, state} | {:stop, :normal, state}
-  def handle_info(:recv, state = %{protocol: protocol}) do
-    with {:ok, data} <- protocol.recv(state.sock, 0, 100),
-         {:pubsub, term} <- :erlang.binary_to_term(data) do
+  def handle_info(:recv, state = %{transport: transport}) do
+    with {:ok, data} <- transport.recv(state.sock, 0, 100),
+         {:pubsub, term} <- Plug.Crypto.non_executable_binary_to_term(data, [:safe]) do
       Phoenix.PubSub.broadcast(state.pubsub_server, state.topic, term)
       Process.send_after(self(), :recv, 0)
       {:noreply, state}
@@ -117,12 +128,14 @@ defmodule PonyExpress.Client do
       {:error, :timeout} ->
         Process.send_after(self(), :recv, 0)
         {:noreply, state}
-      {:error, :closed} ->
+      {:error, any} ->
         # we don't expect the remote side to close the connection.
         # this should trigger the client to attempt to reheal the
         # connection by restarting and triggering a reconnection
         # via `init/1`
-        {:stop, :closed, state}
+        {:stop, any, state}
+      _some_other_term ->
+        {:noreply, state}
     end
   end
 

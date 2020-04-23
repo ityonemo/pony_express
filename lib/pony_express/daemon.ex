@@ -43,28 +43,41 @@ defmodule PonyExpress.Daemon do
 
   use GenServer
 
+  # defaults the transport to TLS for library users.  This can be
+  # overridden by a (gasp!) environment variable, but mostly you should
+  # do this on a case-by-case basis on `start_link`.  For internal
+  # library testing, this defaults to Tcp
+
+  if Mix.env in [:dev, :test] do
+    @default_transport Erps.Transport.Tcp
+  else
+    @default_transport Application.get_env(:pony_express, :transport, Erps.Transport.Tls)
+  end
+
   defstruct [
-    port: 1860,
-    sock: nil,
-    timeout: 1000,
-    pubsub_server: nil,
-    protocol: PonyExpress.Tls,
-    ssl_opts: nil,
+    port:              0,
+    sock:              nil,
+    timeout:           1000,
+    pubsub_server:     nil,
+    transport:         @default_transport,
+    tls_opts:          [],
     server_supervisor: nil
   ]
 
+  @type socket :: :inet.socket | :ssl.socket
+
   @typedoc false
   @type state :: %__MODULE__{
-    port: :inet.port_number,
-    sock: port,
-    timeout: timeout,
-    pubsub_server: GenServer.server,
-    protocol: module,
-    server_supervisor: GenServer.server | {module, term},
-    ssl_opts: [
-      cacertfile: Path.t,
-      certfile: Path.t,
-      keyfile: Path.t
+    port:              :inet.port_number,
+    sock:              socket,
+    timeout:           timeout,
+    pubsub_server:     GenServer.server,
+    transport:         module,
+    server_supervisor: GenServer.server | {module, term} | nil,
+    tls_opts: [
+      cacertfile:      Path.t,
+      certfile:        Path.t,
+      keyfile:         Path.t
     ]
   }
 
@@ -83,16 +96,18 @@ defmodule PonyExpress.Daemon do
     }
   end
 
+
   @doc false
   @spec init(keyword) :: {:ok, state} | {:stop, :error}
   def init(opts) do
     state = struct(__MODULE__, opts)
-    case :gen_tcp.listen(state.port, [:binary, active: false, reuseaddr: true]) do
+    transport = state.transport
+    case transport.listen(state.port, [:binary, active: false, reuseaddr: true]) do
       {:ok, sock} ->
         Process.send_after(self(), :accept, 0)
         {:ok, %{state | sock: sock}}
-      _ ->
-        {:stop, :error}
+      {:error, what} ->
+        {:stop, what}
     end
   end
 
@@ -128,39 +143,34 @@ defmodule PonyExpress.Daemon do
 
   #############################################################################
   ## utilities
+  defp to_server(state, child_sock) do
+    state
+    |> Map.from_struct
+    |> Map.put(:sock, child_sock)
+  end
+
   defp do_start_server(state = %{server_supervisor: nil}, child_sock) do
     # unsupervised case.  Not recommended, except for testing purposes.
-    PonyExpress.Server.start_link(
-                             sock: child_sock,
-                             pubsub_server: state.pubsub_server,
-                             protocol: state.protocol,
-                             ssl_opts: state.ssl_opts)
+    state
+    |> to_server(child_sock)
+    |> PonyExpress.Server.start_link()
   end
-  defp do_start_server(state = %{server_supervisor: {module, term}}, child_sock) do
+  defp do_start_server(state = %{server_supervisor: {module, name}}, child_sock) do
     # custom supervisor case.
-    module.start_child(term,
-      {PonyExpress.Server,
-        sock: child_sock,
-        pubsub_server: state.pubsub_server,
-        protocol: state.protocol,
-        ssl_opts: state.ssl_opts})
+    module.start_child(name,
+      {PonyExpress.Server, to_server(state, child_sock)})
   end
   defp do_start_server(state = %{server_supervisor: sup}, child_sock) do
     # default, DynamicSupervisor case
     DynamicSupervisor.start_child(sup,
-      {PonyExpress.Server,
-        sock: child_sock,
-        pubsub_server: state.pubsub_server,
-        protocol: state.protocol,
-        ssl_opts: state.ssl_opts})
+      {PonyExpress.Server, to_server(state, child_sock)})
   end
 
   #############################################################################
   ## Reentrant function that lets us keep accepting forever.
 
-  def handle_info(:accept, state) do
-    with {:ok, child_sock} <- :gen_tcp.accept(state.sock, state.timeout),
-         # TODO: change this to start_supervised:
+  def handle_info(:accept, state = %{transport: transport}) do
+    with {:ok, child_sock} <- transport.accept(state.sock, state.timeout),
          {:ok, srv_pid} <- do_start_server(state, child_sock) do
       # transfer ownership to the child server.
       :gen_tcp.controlling_process(child_sock, srv_pid)

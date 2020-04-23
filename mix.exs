@@ -15,22 +15,25 @@ defmodule PonyExpress.MixProject do
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger]
     ]
   end
 
-  # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
       {:ex_doc, "~> 0.21.2", only: :dev, runtime: :false},
-      {:phoenix_pubsub, "~> 1.1"}
+      {:phoenix_pubsub, "~> 1.1"},
+      {:plug_crypto, "~> 1.1.2"},
+
+      # uses x509 for cert generation
+      {:x509, "~> 0.8.0", only: [:dev, :test]},
+      # uses ERPS for its TCP/TLS abstractions (this may be broken out later).
+      {:erps, "~> 0.3.2"}
     ]
   end
 

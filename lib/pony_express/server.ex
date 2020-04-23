@@ -2,19 +2,15 @@ defmodule PonyExpress.Server do
 
   @moduledoc false
 
-  defstruct [
-    pubsub_server: nil,
-    sock: nil,
-    topic: nil,
-    protocol: PonyExpress.Tls,
-    ssl_opts: nil
-  ]
+
+  defstruct [:pubsub_server, :sock, :topic, :transport,
+    ssl_opts: []]
 
   @type state :: %__MODULE__{
     pubsub_server: GenServer.server,
     sock: port,
     topic: String.t | nil,
-    protocol: module,
+    transport: module,
     ssl_opts: [
       cacertfile: Path.t,
       certfile: Path.t,
@@ -45,13 +41,13 @@ defmodule PonyExpress.Server do
 
   @spec allow(GenServer.server) :: {:reply, :ok, state} | {:stop, any, :error, state}
   def allow(srv), do: GenServer.call(srv, :allow)
-  defp allow_impl(state = %{protocol: protocol}) do
+  defp allow_impl(state = %{transport: transport}) do
     # perform ssl handshake, upgrade to TLS.
-    upgraded_sock = protocol.handshake(state.sock, state.ssl_opts)
     # next, wait for the subscription signal and set up the phoenix
     # pubsub subscriptions.
-    with {:ok, data} <- protocol.recv(upgraded_sock, 0, 1000),
-         {:subscribe, topic} <- :erlang.binary_to_term(data) do
+    with {:ok, upgraded_sock} <- upgraded_sock = transport.handshake(state.sock, state.ssl_opts),
+         {:ok, data} <- transport.recv(upgraded_sock, 0, 1000),
+         {:subscribe, topic} <- Plug.Crypto.non_executable_binary_to_term(data, [:safe]) do
       Phoenix.PubSub.subscribe(state.pubsub_server, topic)
       Process.send_after(self(), :recv, 0)
       {:reply, :ok, %{state | sock: upgraded_sock}}
@@ -65,8 +61,8 @@ defmodule PonyExpress.Server do
     {:noreply, %{state | topic: topic}}
   end
 
-  def handle_info(:recv, state = %{protocol: protocol}) do
-    case protocol.recv(state.sock, 0, 100) do
+  def handle_info(:recv, state = %{transport: transport}) do
+    case transport.recv(state.sock, 0, 100) do
       {:ok, _data} ->
         Process.send_after(self(), :recv, 0)
         {:noreply, state}
@@ -93,8 +89,8 @@ defmodule PonyExpress.Server do
     allow_impl(state)
   end
 
-  defp send_term(state = %{protocol: protocol}, data) do
-    protocol.send(state.sock, :erlang.term_to_binary({:pubsub, data}))
+  defp send_term(state = %{transport: transport}, data) do
+    transport.send(state.sock, :erlang.term_to_binary({:pubsub, data}))
   end
 
 end
