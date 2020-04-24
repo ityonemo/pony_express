@@ -3,8 +3,13 @@ defmodule PonyExpress.Client do
   @moduledoc """
   GenServer which initiates a TLS connection to a remote `Phoenix.PubSub`
   server and forwards the subscription across the TLS connection to a local
-  PubSub server.  Note that PubSub messages are forwarded in one direction
-  only, from server to client.
+  PubSub server.
+
+  Note that PubSub messages are forwarded in one direction only, from server
+  to client.  A future version may feature pushing messages to the remote
+  server, but this may require considerations like request throttling.  In
+  this case the security model is that the Client trusts the Server to
+  not spam it.
 
   Note:  A client may be bound to a single remote server, and a single
   topic on a single PubSub server bound to that TCP port by the remote's
