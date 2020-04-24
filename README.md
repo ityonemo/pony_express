@@ -21,7 +21,7 @@ On the server side:
 ```elixir
 iex> Phoenix.PubSub.PG2.start_link(:source, [])
 iex> PonyExpress.Daemon.start_link(
-       pubsub_server: :source,
+       pubsub_server: SourcePubSub,
        tls_opts: [
          cacertfile: <ca_certfile>
          certfile: <certfile>
@@ -36,7 +36,7 @@ iex> Phoenix.PubSub.PG2.start_link(:dest, [])
 iex> PonyExpress.Client.start_link(
        server: <server IP>
        topic: "my_topic",
-       pubsub_server: :dest,
+       pubsub_server: DestPubSub,
        tls_opts: [
          cacertfile: <ca_certfile>
          certfile: <certfile>
@@ -70,7 +70,7 @@ by adding `pony_express` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pony_express, "~> 0.1.0"}
+    {:pony_express, "~> 0.2.0"}
   ]
 end
 ```
