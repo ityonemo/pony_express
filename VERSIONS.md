@@ -10,3 +10,8 @@
 - now uses `Erps` package to unify TLS semantics
 - automatic TLS test file generation for tests
 - Use `Plug.Crypto.non_executable_binary_to_term/2` for translating messages
+
+## 0.2.1
+
+- clean up modules provided for API definition
+- update erps dependency
