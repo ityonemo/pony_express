@@ -42,6 +42,10 @@ defmodule PonyExpress.Client do
   - `:topic` - a string which describes the topic remotely subscribed to.
   - `:tls_opts` - cerificate authority pem file, client certificate, and
     client key.
+
+  the following optional parameters are accepted:
+  - `:reconnect` - if the connection attempt fails, retry after that many
+    milliseconds.
   """
 
   if Mix.env in [:dev, :test] do
@@ -57,7 +61,8 @@ defmodule PonyExpress.Client do
     pubsub_server: nil,
     topic: nil,
     transport: @default_transport,
-    tls_opts: []
+    tls_opts: [],
+    connected?: false
   ]
 
   @typedoc false
@@ -68,27 +73,20 @@ defmodule PonyExpress.Client do
     pubsub_server: GenServer.server,
     topic: String.t,
     transport: module,
-    tls_opts: keyword
+    tls_opts: keyword,
+    connected?: boolean
   }
 
   use GenServer
+  alias PonyExpress.Packet
+  require Logger
 
-  @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after]
-
-  def start(opts) do
-    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    GenServer.start(__MODULE__, inner_opts, gen_server_opts)
-  end
-
-  @spec start_link(keyword) :: GenServer.on_start
-  def start_link(opts) do
-    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    GenServer.start_link(__MODULE__, inner_opts, gen_server_opts)
-  end
+  #############################################################################
+  ## initialization and supervision boilerplate
 
   def child_spec(opts) do
     %{
-      id: __MODULE__,
+      id: opts[:topic],
       start: {__MODULE__, :start_link, [opts]},
       type: :worker,
       restart: :transient,
@@ -96,37 +94,79 @@ defmodule PonyExpress.Client do
     }
   end
 
+  @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after]
+
+  def start(opts) do
+    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
+    if is_binary(opts[:topic]) do
+      GenServer.start(__MODULE__, inner_opts, gen_server_opts)
+    else
+      {:error, "pony_express client needs a topic"}
+    end
+  end
+
+  @spec start_link(keyword) :: GenServer.on_start
+  def start_link(opts) do
+    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
+    if is_binary(opts[:topic]) do
+      GenServer.start_link(__MODULE__, inner_opts, gen_server_opts)
+    else
+      {:error, "pony_express client needs a topic"}
+    end
+  end
+
   @impl true
   @doc false
   @spec init(keyword) :: {:ok, state} | {:stop, any}
   def init(opts) do
     state = struct(__MODULE__, opts)
+    case connect(state) do
+      error = {:error, reason} ->
+        if delay = opts[:reconnect] do
+          Process.send_after(self(), {:reconnect, delay}, delay)
+          {:ok, state}
+        else
+          error
+        end
+      ok = {:ok, state} -> ok
+    end
+  end
 
-    transport = state.transport
-
-    with {:ok, sock} <- transport.connect(state.server, state.port, [:binary, active: false]),
+  @connect_opts [:binary, active: false]
+  defp connect(state = %{transport: transport}) do
+    with {:ok, sock} <- transport.connect(state.server, state.port, @connect_opts),
          {:ok, upgraded} <- transport.upgrade(sock, state.tls_opts) do
-      new_state = %{state | sock: upgraded}
+      new_state = %{state | sock: upgraded, connected?: true}
       send_term(new_state, {:subscribe, state.topic})
       Process.send_after(self(), :recv, 0)
-      {:ok, new_state}
+      {:ok, %{new_state | connected?: true}}
     else
-      {:error, reason} ->
-        {:stop, reason}
+      error ->
+        Logger.error("error connecting to #{format state.server}")
+        error
     end
+  end
+
+  @spec connected?(GenServer.server) :: boolean
+  def connected?(client), do: GenServer.call(client, :connected?)
+  def connected_impl(_from, state) do
+    {:reply, state.connected?, state}
   end
 
   @spec send_term(state, term) :: any
   defp send_term(state = %{transport: transport}, data) do
-    transport.send(state.sock, :erlang.term_to_binary(data))
+    transport.send(state.sock, Packet.encode(data))
   end
+
+  @impl true
+  def handle_call(:connected?, from, state), do: connected_impl(from, state)
 
   @impl true
   @spec handle_info(:recv, state) :: {:noreply, state} | {:stop, :normal, state}
   def handle_info(:recv, state = %{transport: transport}) do
-    with {:ok, data} <- transport.recv(state.sock, 0, 100),
-         {:pubsub, term} <- Plug.Crypto.non_executable_binary_to_term(data, [:safe]) do
-      Phoenix.PubSub.broadcast(state.pubsub_server, state.topic, term)
+    with {:ok, term} <- Packet.get_data(transport, state.sock),
+         {:pubsub, pubsub_msg} <- term do
+      Phoenix.PubSub.broadcast(state.pubsub_server, state.topic, pubsub_msg)
       Process.send_after(self(), :recv, 0)
       {:noreply, state}
     else
@@ -143,5 +183,18 @@ defmodule PonyExpress.Client do
         {:noreply, state}
     end
   end
+  def handle_info({:reconnect, delay}, state) do
+    case connect(state) do
+      {:ok, new_state} ->
+        {:noreply, new_state}
+      {:error, reason} ->
+        Process.send_after(self(), {:reconnect, delay}, delay)
+        {:noreply, state}
+    end
+  end
 
+  defp format(ip = {_, _, _, _}), do: :inet.ntoa(ip)
+  defp format(string) when is_binary(string), do: string
+  defp format(list) when is_list(list), do: list
+  defp format(any), do: inspect(any)
 end

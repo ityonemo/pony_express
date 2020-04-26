@@ -2,7 +2,6 @@ defmodule PonyExpress.Server do
 
   @moduledoc false
 
-
   defstruct [:pubsub_server, :sock, :topic, :transport,
     ssl_opts: []]
 
@@ -17,6 +16,8 @@ defmodule PonyExpress.Server do
       keyfile: Path.t
     ]
   }
+
+  alias PonyExpress.Packet
 
   @spec start_link(keyword) :: GenServer.on_start
   def start_link(opts) do
@@ -46,13 +47,16 @@ defmodule PonyExpress.Server do
     # next, wait for the subscription signal and set up the phoenix
     # pubsub subscriptions.
     with {:ok, upgraded_sock} <- upgraded_sock = transport.handshake(state.sock, state.ssl_opts),
-         {:ok, data} <- transport.recv(upgraded_sock, 0, 1000),
-         {:subscribe, topic} <- Plug.Crypto.non_executable_binary_to_term(data, [:safe]) do
+         {:ok, data} <- Packet.get_data(transport, upgraded_sock),
+         {:subscribe, topic} when is_binary(topic) <- data do
+
       Phoenix.PubSub.subscribe(state.pubsub_server, topic)
       Process.send_after(self(), :recv, 0)
       {:reply, :ok, %{state | sock: upgraded_sock}}
     else
-      error -> {:stop, error, :error, state}
+      {:subscribe, _} -> {:stop, :einval, {:error, "invalid topic"}, state}
+      error = {:error, msg} -> {:stop, msg, error, state}
+      error -> {:stop, :error, error, state}
     end
   end
 
@@ -61,18 +65,21 @@ defmodule PonyExpress.Server do
     {:noreply, %{state | topic: topic}}
   end
 
-  def handle_info(:recv, state = %{transport: transport}) do
-    case transport.recv(state.sock, 0, 100) do
-      {:ok, _data} ->
+  def handle_info(:recv, state) do
+    case Packet.get_data(state.transport, state.sock) do
+      {:ok, :keepalive} ->
         Process.send_after(self(), :recv, 0)
         {:noreply, state}
       {:error, :timeout} ->
         Process.send_after(self(), :recv, 0)
         {:noreply, state}
+      {:ok, _} ->
+        # other packets are invalid.
+        {:stop, :einval, state}
       {:error, :closed} ->
         {:stop, :normal, state}
-      err ->
-        {:stop, err, state}
+      {:error, error} ->
+        {:stop, error, state}
     end
   end
   def handle_info(pubsub_msg, state) do
@@ -90,7 +97,7 @@ defmodule PonyExpress.Server do
   end
 
   defp send_term(state = %{transport: transport}, data) do
-    transport.send(state.sock, :erlang.term_to_binary({:pubsub, data}))
+    transport.send(state.sock, Packet.encode({:pubsub, data}))
   end
 
 end

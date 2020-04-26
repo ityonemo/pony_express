@@ -15,3 +15,10 @@
 
 - clean up modules provided for API definition
 - update erps dependency
+
+## 0.3.0
+
+- reject the case where the client forgets to specify a topic
+- server closes the client immediately if no topic is specified
+- allow information packet to exceed the MTU
+- allow client connection errors to trigger reconnect attempt

@@ -33,7 +33,7 @@ defmodule PonyExpress.MixProject do
       # uses x509 for cert generation
       {:x509, "~> 0.8.0", only: [:dev, :test]},
       # uses ERPS for its TCP/TLS abstractions (this may be broken out later).
-      {:erps, "~> 0.3.2"}
+      {:erps, "~> 0.3.4"}
     ]
   end
 
