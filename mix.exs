@@ -4,7 +4,7 @@ defmodule PonyExpress.MixProject do
   def project do
     [
       app: :pony_express,
-      version: "0.2.1",
+      version: "0.3.1",
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -33,7 +33,7 @@ defmodule PonyExpress.MixProject do
       # uses x509 for cert generation
       {:x509, "~> 0.8.0", only: [:dev, :test]},
       # uses ERPS for its TCP/TLS abstractions (this may be broken out later).
-      {:erps, "~> 0.3.4"}
+      {:erps, path: "../erps"}# "~> 0.3.4"}
     ]
   end
 

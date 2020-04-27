@@ -9,20 +9,22 @@ defmodule PonyExpressTest.MtuTest do
 
   test "test that we can send results that exceed the MTU" do
     # create pubsubs locally
-    PubSub.PG2.start_link(:test_src, [])
-    PubSub.PG2.start_link(:test_tgt, [])
+    PubSub.PG2.start_link(:mtu_test_src, [])
+    PubSub.PG2.start_link(:mtu_test_tgt, [])
 
-    PubSub.subscribe(:test_tgt, "pony_express")
+    Process.sleep(100)
+
+    PubSub.subscribe(:mtu_test_tgt, "pony_express")
 
     {:ok, daemon} = Daemon.start_link(port: 0,
-                                      pubsub_server: :test_src)
+                                      pubsub_server: :mtu_test_src)
 
     dport = Daemon.port(daemon)
 
     Client.start_link(server: @localhost,
                       port: dport,
                       topic: "pony_express",
-                      pubsub_server: :test_tgt)
+                      pubsub_server: :mtu_test_tgt)
 
     # give the system some time to settle.
     # TODO: make this a call query on the client.
@@ -30,7 +32,7 @@ defmodule PonyExpressTest.MtuTest do
 
     more_than_mtu = <<0::10240 * 8>>
 
-    PubSub.broadcast(:test_src, "pony_express", more_than_mtu)
+    PubSub.broadcast(:mtu_test_src, "pony_express", more_than_mtu)
 
     assert_receive ^more_than_mtu, 500
   end
