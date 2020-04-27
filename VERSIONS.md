@@ -22,3 +22,11 @@
 - server closes the client immediately if no topic is specified
 - allow information packet to exceed the MTU
 - allow client connection errors to trigger reconnect attempt
+
+## 0.3.1
+
+- bump dependency to newer version of ERPS
+
+## Future Versions:
+
+- upgrade to Phoenix PubSub 2.0.0
