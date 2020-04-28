@@ -99,7 +99,6 @@ defmodule PonyExpress.Daemon do
   @doc false
   @spec init(keyword) :: {:ok, state} | {:stop, :error}
   def init(opts) do
-    opts |> IO.inspect(label: "102")
     state = struct(__MODULE__, opts)
     transport = state.transport
     listen_opts = [:binary, active: false, reuseaddr: true, tls_opts: opts[:tls_opts]]
