@@ -19,7 +19,7 @@ defmodule PonyExpress.Daemon do
     [{PonyExpress.Daemon,
       pubsub_server: <pubsub_server>,
       server_supervisor: <supervisor for servers>
-      ssl_opts: [
+      tls_opts: [
         cacertfile: <ca_certfile>
         certfile: <certfile>
         keyfile: <keyfile>
@@ -28,7 +28,7 @@ defmodule PonyExpress.Daemon do
 
   the following parameters are required:
   - `:pubsub_server` - the atom describing the Phoenix PubSub server.
-  - `:ssl_opts` - cerificate authority pem file, server certificate, and server key.
+  - `:tls_opts` - cerificate authority pem file, server certificate, and server key.
 
   the following parameters might be useful:
   - `:port` - port to listen on.  Defaults to 1860, a value of 0 will pick "any available port"
@@ -96,13 +96,14 @@ defmodule PonyExpress.Daemon do
     }
   end
 
-
   @doc false
   @spec init(keyword) :: {:ok, state} | {:stop, :error}
   def init(opts) do
+    opts |> IO.inspect(label: "102")
     state = struct(__MODULE__, opts)
     transport = state.transport
-    case transport.listen(state.port, [:binary, active: false, reuseaddr: true]) do
+    listen_opts = [:binary, active: false, reuseaddr: true, tls_opts: opts[:tls_opts]]
+    case transport.listen(state.port, listen_opts) do
       {:ok, sock} ->
         Process.send_after(self(), :accept, 0)
         {:ok, %{state | sock: sock}}

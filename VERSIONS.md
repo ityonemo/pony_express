@@ -27,6 +27,10 @@
 
 - bump dependency to newer version of ERPS
 
+## 0.3.2
+
+- fix error in tls options passing and docs for daemon.
+
 ## Future Versions:
 
 - upgrade to Phoenix PubSub 2.0.0

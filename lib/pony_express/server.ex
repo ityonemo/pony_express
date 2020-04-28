@@ -3,14 +3,14 @@ defmodule PonyExpress.Server do
   @moduledoc false
 
   defstruct [:pubsub_server, :sock, :topic, :transport,
-    ssl_opts: []]
+    tls_opts: []]
 
   @type state :: %__MODULE__{
     pubsub_server: GenServer.server,
     sock: port,
     topic: String.t | nil,
     transport: module,
-    ssl_opts: [
+    tls_opts: [
       cacertfile: Path.t,
       certfile: Path.t,
       keyfile: Path.t
