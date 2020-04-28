@@ -27,7 +27,7 @@
 
 - bump dependency to newer version of ERPS
 
-## 0.3.2
+## 0.3.3
 
 - fix error in tls options passing and docs for daemon.
 
