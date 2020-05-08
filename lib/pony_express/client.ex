@@ -62,8 +62,9 @@ defmodule PonyExpress.Client do
     topic: nil,
     transport: @default_transport,
     tls_opts: [],
-    connected?: false
   ]
+
+  # TODO: change internal state to "socket"
 
   @typedoc false
   @type state :: %__MODULE__{
@@ -73,11 +74,10 @@ defmodule PonyExpress.Client do
     pubsub_server: GenServer.server,
     topic: String.t,
     transport: module,
-    tls_opts: keyword,
-    connected?: boolean
+    tls_opts: keyword
   }
 
-  use GenServer
+  use Connection
   alias PonyExpress.Packet
   require Logger
 
@@ -98,103 +98,100 @@ defmodule PonyExpress.Client do
 
   def start(opts) do
     {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    if is_binary(opts[:topic]) do
-      GenServer.start(__MODULE__, inner_opts, gen_server_opts)
-    else
-      {:error, "pony_express client needs a topic"}
-    end
+    is_binary(opts[:topic]) or raise "pony express client needs a topic"
+    Connection.start(__MODULE__, inner_opts, gen_server_opts)
   end
 
   @spec start_link(keyword) :: GenServer.on_start
   def start_link(opts) do
-    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    if is_binary(opts[:topic]) do
-      GenServer.start_link(__MODULE__, inner_opts, gen_server_opts)
+    opts
+    |> put_in([:spawn_opt], [:link | (opts[:spawn_opt] || [])])
+    |> start
+  end
+
+  @impl true
+  @spec init(keyword) :: {:connect, :init, state}
+  def init(options!) do
+    options! = Keyword.put_new(options!, :transport, @default_transport)
+    {:connect, :init, struct(__MODULE__, options!)}
+  end
+
+  ##################################################################################
+  ## connection implementation
+
+  @connect_opts [:binary, active: false]
+
+  @impl true
+  @spec connect(:init, state) :: {:ok, state} | {:backoff, timeout, state} | {:stop, any, state}
+  def connect(_, state = %{transport: transport}) do
+    with {:ok, socket} <- transport.connect(state.server, state.port, @connect_opts),
+         {:ok, upgraded} <- transport.upgrade(socket, state.tls_opts) do
+      new_state = %{state | sock: upgraded}
+      # send a subscription message to the server
+      send_term(new_state, {:subscribe, state.topic})
+      #then start the receive loop.
+      trigger_receive()
+      {:ok, new_state}
     else
-      {:error, "pony_express client needs a topic"}
+      {:error, :econnrefused} ->
+        {:backoff, 1000, state}
+      {:error, message} ->
+        Logger.error("connection error: #{logformat message}")
     end
   end
 
   @impl true
-  @doc false
-  @spec init(keyword) :: {:ok, state} | {:stop, any}
-  def init(opts) do
-    state = struct(__MODULE__, opts)
-    case connect(state) do
-      error = {:error, reason} ->
-        if delay = opts[:reconnect] do
-          Process.send_after(self(), {:reconnect, delay}, delay)
-          {:ok, state}
-        else
-          error
-        end
-      ok = {:ok, state} -> ok
-    end
-  end
+  def disconnect(_, state), do: {:stop, :disconnected, state}
 
-  @connect_opts [:binary, active: false]
-  defp connect(state = %{transport: transport}) do
-    with {:ok, sock} <- transport.connect(state.server, state.port, @connect_opts),
-         {:ok, upgraded} <- transport.upgrade(sock, state.tls_opts) do
-      new_state = %{state | sock: upgraded, connected?: true}
-      send_term(new_state, {:subscribe, state.topic})
-      Process.send_after(self(), :recv, 0)
-      {:ok, %{new_state | connected?: true}}
+  ##################################################################################
+  ## MESSAGE IMPLEMENTATIONS
+
+  defp recv_impl(state = %{transport: transport}) do
+    with {:ok, term} <- Packet.get_data(transport, state.sock),
+         {:pubsub, pubsub_msg} <- term do
+      Phoenix.PubSub.broadcast(state.pubsub_server, state.topic, pubsub_msg)
+      trigger_receive()
+      {:noreply, state}
     else
-      error ->
-        Logger.error("error connecting to #{format state.server}")
-        error
+      {:error, :timeout} -> # normal receive timeout event
+        trigger_receive()
+        {:noreply, state}
+      {:error, any} ->
+        Logger.error("error receiving message #{logformat any}")
+        # with any other error, trigger the client to reheal the connection by
+        # restarting and reconnecting via init/1
+        {:stop, any, state}
+      any ->
+        Logger.error("unexpected receive result #{inspect any }")
+        {:stop, :error, state}
     end
   end
 
-  @spec connected?(GenServer.server) :: boolean
-  def connected?(client), do: GenServer.call(client, :connected?)
-  def connected_impl(_from, state) do
-    {:reply, state.connected?, state}
-  end
+  ##################################################################################
+  ## ROUTER
+
+  @impl true
+  @spec handle_info(:recv, state) :: {:noreply, state} | {:stop, :normal, state}
+  def handle_info(:recv, state), do: recv_impl(state)
+
+  ##################################################################################
+  ## PRIVATE HELPER FUNCTIONS
 
   @spec send_term(state, term) :: any
   defp send_term(state = %{transport: transport}, data) do
     transport.send(state.sock, Packet.encode(data))
   end
 
-  @impl true
-  def handle_call(:connected?, from, state), do: connected_impl(from, state)
-
-  @impl true
-  @spec handle_info(:recv, state) :: {:noreply, state} | {:stop, :normal, state}
-  def handle_info(:recv, state = %{transport: transport}) do
-    with {:ok, term} <- Packet.get_data(transport, state.sock),
-         {:pubsub, pubsub_msg} <- term do
-      Phoenix.PubSub.broadcast(state.pubsub_server, state.topic, pubsub_msg)
-      Process.send_after(self(), :recv, 0)
-      {:noreply, state}
-    else
-      {:error, :timeout} ->
-        Process.send_after(self(), :recv, 0)
-        {:noreply, state}
-      {:error, any} ->
-        # we don't expect the remote side to close the connection.
-        # this should trigger the client to attempt to reheal the
-        # connection by restarting and triggering a reconnection
-        # via `init/1`
-        {:stop, any, state}
-      _some_other_term ->
-        {:noreply, state}
-    end
-  end
-  def handle_info({:reconnect, delay}, state) do
-    case connect(state) do
-      {:ok, new_state} ->
-        {:noreply, new_state}
-      {:error, reason} ->
-        Process.send_after(self(), {:reconnect, delay}, delay)
-        {:noreply, state}
-    end
-  end
-
   defp format(ip = {_, _, _, _}), do: :inet.ntoa(ip)
   defp format(string) when is_binary(string), do: string
   defp format(list) when is_list(list), do: list
   defp format(any), do: inspect(any)
+
+  defp logformat(content) when is_binary(content), do: content
+  defp logformat(content) when is_list(content), do: content
+  defp logformat(content), do: inspect(content)
+
+  defp trigger_receive do
+    Process.send_after(self(), :recv, 0)
+  end
 end

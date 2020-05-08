@@ -29,6 +29,7 @@ defmodule PonyExpress.MixProject do
       {:ex_doc, "~> 0.21.2", only: :dev, runtime: :false},
       {:phoenix_pubsub, "~> 1.1"},
       {:plug_crypto, "~> 1.1.2"},
+      {:connection, "~> 1.0"},
 
       # uses x509 for cert generation
       {:x509, "~> 0.8.0", only: [:dev, :test]},
