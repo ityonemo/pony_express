@@ -28,13 +28,13 @@ defmodule PonyExpress.MixProject do
     [
       {:ex_doc, "~> 0.21.2", only: :dev, runtime: :false},
       {:phoenix_pubsub, "~> 1.1"},
-      {:plug_crypto, "~> 1.1.2"},
+      # connection and transport primitives
       {:connection, "~> 1.0"},
-
+      {:transport, path: "../transport"}, #, "~> 0.1.0"},
+      # over-the-wire encoding
+      {:plug_crypto, "~> 1.1.2"},
       # uses x509 for cert generation
       {:x509, "~> 0.8.0", only: [:dev, :test]},
-      # uses ERPS for its TCP/TLS abstractions (this may be broken out later).
-      {:erps, "~> 0.4.1"}
     ]
   end
 

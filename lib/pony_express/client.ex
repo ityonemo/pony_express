@@ -49,9 +49,9 @@ defmodule PonyExpress.Client do
   """
 
   if Mix.env in [:dev, :test] do
-    @default_transport Erps.Transport.Tcp
+    @default_transport Transport.Tcp
   else
-    @default_transport Application.get_env(:pony_express, :transport, Erps.Transport.Tls)
+    @default_transport Application.get_env(:pony_express, :transport, Transport.Tls)
   end
 
   defstruct [
@@ -119,13 +119,11 @@ defmodule PonyExpress.Client do
   ##################################################################################
   ## connection implementation
 
-  @connect_opts [:binary, active: false]
-
   @impl true
   @spec connect(:init, state) :: {:ok, state} | {:backoff, timeout, state} | {:stop, any, state}
   def connect(_, state = %{transport: transport}) do
-    with {:ok, socket} <- transport.connect(state.server, state.port, @connect_opts),
-         {:ok, upgraded} <- transport.upgrade(socket, state.tls_opts) do
+    with {:ok, socket} <- transport.connect(state.server, state.port),
+         {:ok, upgraded} <- transport.upgrade(socket, tls_opts: state.tls_opts) do
       new_state = %{state | sock: upgraded}
       # send a subscription message to the server
       send_term(new_state, {:subscribe, state.topic})
@@ -137,6 +135,7 @@ defmodule PonyExpress.Client do
         {:backoff, 1000, state}
       {:error, message} ->
         Logger.error("connection error: #{logformat message}")
+        {:stop, message, state}
     end
   end
 

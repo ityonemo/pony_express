@@ -81,6 +81,6 @@ be found at [https://hexdocs.pm/pony_express](https://hexdocs.pm/pony_express).
 
 ## Testing
 
-PonyExpress creates a series of testing keys in `/tmp/.erps-test/<32-byte-slug>`.
+PonyExpress creates a series of testing keys in `/tmp/.pony-express-test/<32-byte-slug>`.
 These keys are deleted if the test suite is successful and left for examination
 if the test suite is not.

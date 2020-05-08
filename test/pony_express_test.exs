@@ -34,33 +34,32 @@ defmodule PonyExpressTest do
     assert_receive :ping, 500
   end
 
-  def path(file) do
-    Path.join(PonyExpressTest.TlsFiles.path(), file)
-  end
-
   @tag :tls
   test "pony express with ssl activated" do
     # create pubsubs locally
     PubSub.PG2.start_link(:test_ssl_src, [])
     PubSub.PG2.start_link(:test_ssl_tgt, [])
 
+    import PonyExpressTest.TlsOpts
+
     PubSub.subscribe(:test_ssl_tgt, "pony_express")
 
-    {:ok, daemon} = Daemon.start_link(pubsub_server: :test_ssl_src,
-                                      port: 0,
-                                      tls_opts: [cacertfile: path("rootCA.pem"),
-                                                 certfile: path("server.cert"),
-                                                 keyfile: path("server.key")])
+    daemon_opts = [
+      pubsub_server: :test_ssl_src,
+      port: 0
+      ] ++ tls_opts("server")
+
+    {:ok, daemon} = Daemon.start_link(daemon_opts)
 
     dport = Daemon.port(daemon)
 
-    Client.start_link(server: @localhost,
-                      port: dport,
-                      topic: "pony_express",
-                      pubsub_server: :test_ssl_tgt,
-                      tls_opts: [cacertfile: path("rootCA.pem"),
-                                 certfile: path("client.cert"),
-                                 keyfile: path("client.key")])
+    client_opts = [
+      server: @localhost,
+      port: dport,
+      topic: "pony_express",
+      pubsub_server: :test_ssl_tgt] ++ tls_opts("server")
+
+    Client.start_link(client_opts)
 
     # give the system some time to settle.
     # TODO: make this a call query on the client.
