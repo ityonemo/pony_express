@@ -48,6 +48,7 @@ defmodule PonyExpress.Client do
   the following optional parameters are accepted:
   - `:reconnect` - if the connection attempt fails, retry after that many
     milliseconds.
+  - `:transport` - specify an alternative transport module besides TLS.  See `Transport`.
   """
 
   if Mix.env in [:dev, :test] do

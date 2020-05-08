@@ -39,6 +39,7 @@ defmodule PonyExpress.Daemon do
       that will be called in the following fashion:
       `module.start_child(term, {PonyExpress.Server, opts})`.  See
       `c:DynamicSupervisor.start_child/2`
+  - `:transport` - specify an alternative transport module besides TLS.  See `Transport`.
   """
 
   use GenServer
