@@ -32,7 +32,7 @@ defmodule PonyExpress.MixProject do
       {:phoenix_pubsub, "~> 1.1"},
       # connection and transport primitives
       {:connection, "~> 1.0"},
-      {:transport, path: "../transport"}, #, "~> 0.1.0"},
+      {:transport, "~> 0.1.0"},
       # over-the-wire encoding
       {:plug_crypto, "~> 1.1.2"},
       # uses x509 for cert generation
