@@ -31,7 +31,7 @@ defmodule PonyExpress.Daemon do
   - `:tls_opts` - cerificate authority pem file, server certificate, and server key.
 
   the following parameters might be useful:
-  - `:port` - port to listen on.  Defaults to 1860, a value of 0 will pick "any available port"
+  - `:port` - port to listen on.  Defaults to 0, which will pick "any available port"
   - `:server_supervisor` - one of the following:
     - `nil` (default), your servers will be unsupervised **do not release with this setting**
     - `:<atom>`, a DynamicSupervisor named `<atom>`
@@ -53,11 +53,12 @@ defmodule PonyExpress.Daemon do
     @default_transport Transport.Tls
   end
 
-  defstruct [
+  @enforce_keys [:pubsub_server]
+
+  defstruct @enforce_keys ++ [
     port:              0,
     sock:              nil,
     timeout:           1000,
-    pubsub_server:     nil,
     transport:         @default_transport,
     tls_opts:          [],
     server_supervisor: nil
@@ -111,6 +112,7 @@ defmodule PonyExpress.Daemon do
   @doc false
   @spec init(keyword) :: {:ok, state} | {:stop, any}
   def init(opts) do
+    opts[:pubsub_server] || raise "you must provide a pubsub server to subscribe to"
     state = struct(__MODULE__, opts)
     listen_opts = @default_listen_opts
     |> Keyword.merge(opts)

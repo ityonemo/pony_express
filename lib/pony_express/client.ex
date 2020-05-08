@@ -27,6 +27,7 @@ defmodule PonyExpress.Client do
   DynamicSupervisor.start_child({
     SomeSupervisor,
     server: <server IP>,
+    port: <port>,
     topic: "<pubsub topic>",
     pubsub_server: <pubsub>,
     tls_opts: [
@@ -38,10 +39,11 @@ defmodule PonyExpress.Client do
   ```
 
   the following parameters are required:
+  - `:server` - remote server you're connecting to.
   - `:pubsub_server` - the atom describing the Phoenix PubSub server.
   - `:topic` - a string which describes the topic remotely subscribed to.
   - `:tls_opts` - cerificate authority pem file, client certificate, and
-    client key.
+    client key. (requirement may depend on your transport strategy)
 
   the following optional parameters are accepted:
   - `:reconnect` - if the connection attempt fails, retry after that many
@@ -54,12 +56,11 @@ defmodule PonyExpress.Client do
     @default_transport Application.get_env(:pony_express, :transport, Transport.Tls)
   end
 
-  defstruct [
-    server: nil,
-    port: 0,
+  @enforce_keys [:server, :port, :pubsub_server, :topic]
+
+  defstruct @enforce_keys ++ [
     sock: nil,
     pubsub_server: nil,
-    topic: nil,
     transport: @default_transport,
     tls_opts: [],
   ]
@@ -113,6 +114,10 @@ defmodule PonyExpress.Client do
   @spec init(keyword) :: {:connect, :init, state}
   def init(options!) do
     options! = Keyword.put_new(options!, :transport, @default_transport)
+    Enum.each(@enforce_keys, fn key ->
+      Keyword.has_key?(options!, key) or raise ArgumentError,
+        "client initialization is missing option #{key}"
+    end)
     {:connect, :init, struct(__MODULE__, options!)}
   end
 
@@ -180,11 +185,6 @@ defmodule PonyExpress.Client do
   defp send_term(state = %{transport: transport}, data) do
     transport.send(state.sock, Packet.encode(data))
   end
-
-  defp format(ip = {_, _, _, _}), do: :inet.ntoa(ip)
-  defp format(string) when is_binary(string), do: string
-  defp format(list) when is_list(list), do: list
-  defp format(any), do: inspect(any)
 
   defp logformat(content) when is_binary(content), do: content
   defp logformat(content) when is_list(content), do: content
