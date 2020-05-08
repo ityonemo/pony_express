@@ -1,6 +1,6 @@
 __ENV__.file
 |> Path.dirname
-|> Path.join("scripts/tls_test_setup.exs")
+|> Path.join("tls_helper.exs")
 |> Code.require_file
 
 ExUnit.start()

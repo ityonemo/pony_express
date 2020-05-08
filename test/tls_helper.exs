@@ -1,7 +1,7 @@
 require Logger
 
 tempdir_name = Base.encode16(:crypto.strong_rand_bytes(32))
-tempdir = Path.join([System.tmp_dir!(), ".erps-test", tempdir_name])
+tempdir = Path.join([System.tmp_dir!(), ".pony-express-test", tempdir_name])
 
 defmodule PonyExpressTest.TlsFiles do
   @path tempdir
@@ -39,3 +39,24 @@ PonyExpressTest.TlsFileGen.generate_cert(tempdir, "wrong-host", ca, ca_key, host
 {wrong_ca, wrong_ca_key} = PonyExpressTest.TlsFileGen.generate_root(tempdir, "wrong-rootCA")
 # generate server authentications
 PonyExpressTest.TlsFileGen.generate_cert(tempdir, "wrong-root", wrong_ca, wrong_ca_key)
+
+defmodule PonyExpressTest.TlsOpts do
+  def path(file), do: Path.join(PonyExpressTest.TlsFiles.path(), file)
+
+  # for tests we don't have actual fqdns for our server (which is tied
+  # to a self-signed certificate authority internal to the tests).  We've
+  # branded the "dns" as 127.0.0.1, so verify_server_identity/2 will make
+  # that match.
+  defp verify_server_identity({:ip, ip}, {:dNSName, dnsname}) do
+    :inet.ntoa(ip) == dnsname
+  end
+
+  # this function is imported by client modules.
+  def tls_opts(who) do
+    [tls_opts: [
+      cacertfile: path("rootCA.pem"),
+      certfile:   path("#{who}.cert"),
+      keyfile:    path("#{who}.key"),
+      customize_hostname_check: [match_fun: &verify_server_identity/2]]]
+  end
+end

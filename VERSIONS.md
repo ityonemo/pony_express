@@ -31,6 +31,11 @@
 
 - fix error in tls options passing and docs for daemon.
 
+## 0.4.0
+
+- update to use `connection` library
+- update to use `transport` library
+
 ## Future Versions:
 
 - upgrade to Phoenix PubSub 2.0.0

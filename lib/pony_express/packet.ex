@@ -1,5 +1,7 @@
 defmodule PonyExpress.Packet do
 
+  @moduledoc false
+
   @magic_cookie <<1860::16, 1861::16>>
   @full_packet_timeout 500
 

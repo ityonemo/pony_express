@@ -31,7 +31,7 @@ defmodule PonyExpress.Daemon do
   - `:tls_opts` - cerificate authority pem file, server certificate, and server key.
 
   the following parameters might be useful:
-  - `:port` - port to listen on.  Defaults to 1860, a value of 0 will pick "any available port"
+  - `:port` - port to listen on.  Defaults to 0, which will pick "any available port"
   - `:server_supervisor` - one of the following:
     - `nil` (default), your servers will be unsupervised **do not release with this setting**
     - `:<atom>`, a DynamicSupervisor named `<atom>`
@@ -39,26 +39,27 @@ defmodule PonyExpress.Daemon do
       that will be called in the following fashion:
       `module.start_child(term, {PonyExpress.Server, opts})`.  See
       `c:DynamicSupervisor.start_child/2`
+  - `:transport` - specify an alternative transport module besides TLS.  See `Transport`.
   """
 
   use GenServer
 
-  # defaults the transport to TLS for library users.  This can be
-  # overridden by a (gasp!) environment variable, but mostly you should
-  # do this on a case-by-case basis on `start_link`.  For internal
-  # library testing, this defaults to Tcp
+  # defaults the transport to TLS for library users. For internal library
+  # testing, this defaults to Tcp.  If you're testing your own pony_express
+  # server, you can override this with the transport argument.
 
   if Mix.env in [:dev, :test] do
-    @default_transport Erps.Transport.Tcp
+    @default_transport Transport.Tcp
   else
-    @default_transport Application.get_env(:pony_express, :transport, Erps.Transport.Tls)
+    @default_transport Transport.Tls
   end
 
-  defstruct [
+  @enforce_keys [:pubsub_server]
+
+  defstruct @enforce_keys ++ [
     port:              0,
     sock:              nil,
     timeout:           1000,
-    pubsub_server:     nil,
     transport:         @default_transport,
     tls_opts:          [],
     server_supervisor: nil
@@ -81,9 +82,15 @@ defmodule PonyExpress.Daemon do
     ]
   }
 
+  @spec start(keyword) :: GenServer.on_start
+  def start(options) do
+    GenServer.start(__MODULE__, options)
+  end
+
   @spec start_link(keyword) :: GenServer.on_start
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts)
+  def start_link(options!) do
+    options! = put_in(options!, [:spawn_opt], [:link | (options![:spawn_opt] || [])])
+    GenServer.start_link(__MODULE__, options!)
   end
 
   def child_spec(opts) do
@@ -96,13 +103,23 @@ defmodule PonyExpress.Daemon do
     }
   end
 
+  @default_listen_opts [reuseaddr: true]
+  @tcp_listen_opts [:buffer, :delay_send, :deliver, :dontroute, :exit_on_close,
+  :header, :highmsgq_watermark, :high_watermark, :keepalive, :linger,
+  :low_msgq_watermark, :low_watermark, :nodelay, :packet, :packet_size, :priority,
+  :recbuf, :reuseaddr, :send_timeout, :send_timeout_close, :show_econnreset,
+  :sndbuf, :tos, :tclass, :ttl, :recvtos, :recvtclass, :recvttl, :ipv6_v6only]
+
   @doc false
-  @spec init(keyword) :: {:ok, state} | {:stop, :error}
+  @spec init(keyword) :: {:ok, state} | {:stop, any}
   def init(opts) do
+    opts[:pubsub_server] || raise "you must provide a pubsub server to subscribe to"
     state = struct(__MODULE__, opts)
-    transport = state.transport
-    listen_opts = [:binary, active: false, reuseaddr: true, tls_opts: opts[:tls_opts]]
-    case transport.listen(state.port, listen_opts) do
+    listen_opts = @default_listen_opts
+    |> Keyword.merge(opts)
+    |> Keyword.take(@tcp_listen_opts)
+
+    case state.transport.listen(state.port, listen_opts) do
       {:ok, sock} ->
         Process.send_after(self(), :accept, 0)
         {:ok, %{state | sock: sock}}
@@ -134,6 +151,9 @@ defmodule PonyExpress.Daemon do
     {:reply, state.port, state}
   end
 
+  # internal function (but also available for public use) that gives you
+  # visibility into the internals of the pony express daemon.  Results of
+  # this function should not be relied upon for forward compatibility.
   @doc false
   @spec info(GenServer.server) :: state
   def info(srv), do: GenServer.call(srv, :info)

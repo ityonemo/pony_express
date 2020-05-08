@@ -46,7 +46,7 @@ defmodule PonyExpress.Server do
     # perform ssl handshake, upgrade to TLS.
     # next, wait for the subscription signal and set up the phoenix
     # pubsub subscriptions.
-    with {:ok, upgraded_sock} <- upgraded_sock = transport.handshake(state.sock, state.tls_opts),
+    with {:ok, upgraded_sock} <- transport.handshake(state.sock, state.tls_opts),
          {:ok, data} <- Packet.get_data(transport, upgraded_sock),
          {:subscribe, topic} when is_binary(topic) <- data do
 
