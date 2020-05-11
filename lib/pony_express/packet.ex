@@ -3,44 +3,43 @@ defmodule PonyExpress.Packet do
   @moduledoc false
 
   @magic_cookie <<1860::16, 1861::16>>
-  @full_packet_timeout 500
 
-  def get_data(transport, socket, timeout \\ 100) do
-    case transport.recv(socket, 0, timeout) do
-      {:ok, @magic_cookie <> <<size::32>> <> rest} when :erlang.size(rest) < size ->
-        get_more(transport, socket, rest, size)
-      {:ok, @magic_cookie <> <<size::32>> <> rest} when :erlang.size(rest) == size ->
+  require Logger
+
+  @spec get_data(module, Transport.socket, binary, timeout)
+    :: {:ok, term, binary} | {:error, term}
+
+  def get_data(transport, socket, buffer, timeout \\ 100) do
+    case buffer do
+      @magic_cookie <> <<size :: 32>> <> rest when :erlang.size(rest) < size ->
+        fetch_more_data(transport, socket, buffer, timeout)
+      @magic_cookie <> <<size :: 32>> <> rest when :erlang.size(rest) == size ->
         term = Plug.Crypto.non_executable_binary_to_term(rest, [:safe])
-        {:ok, term}
-      {:ok, _} ->
-        {:error, :einval}
-      error -> error
+        {:ok, term, <<>>}
+      @magic_cookie <> <<size :: 32>> <> rest ->
+        {first_part, new_buffer} = :erlang.split_binary(rest, size)
+        term = Plug.Crypto.non_executable_binary_to_term(first_part, [:safe])
+        {:ok, term, new_buffer}
+      buffer when :erlang.size(buffer) < 8 ->
+        # buffer is empty, so fetch more data.
+        fetch_more_data(transport, socket, buffer, timeout)
+      any ->
+        # drop it on the floor.
+        Logger.warn("improper binary received #{inspect any}")
+        {:ok, nil, <<>>}
     end
-
   catch
     # return unsafe arguments as badarg.
     :error, :badarg ->
       {:error, :badarg}
   end
 
-  defp get_more(transport, socket, first, size) do
-    leftover_size = size - :erlang.size(first)
-    case transport.recv(socket, leftover_size, @full_packet_timeout) do
-      {:ok, rest} when :erlang.size(rest) == leftover_size ->
-        term = [first, rest]
-        |> IO.iodata_to_binary()
-        |> Plug.Crypto.non_executable_binary_to_term([:safe])
-
-        {:ok, term}
-      {:ok, _} ->
-        {:error, :einval}
+  defp fetch_more_data(transport, socket, buffer, timeout) do
+    case transport.recv(socket, 0, timeout) do
+      {:ok, data} ->
+        {:ok, nil, buffer <> data}
       error -> error
     end
-
-  catch
-    # return unsafe arguments as badarg.
-    :error, :badarg ->
-      {:error, :badarg}
   end
 
   def encode(term) do

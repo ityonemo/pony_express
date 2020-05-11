@@ -2,14 +2,17 @@ defmodule PonyExpress.Server do
 
   @moduledoc false
 
-  defstruct [:pubsub_server, :sock, :topic, :transport,
+  defstruct [:pubsub_server, :tcp_socket, :socket, :topic, :transport,
+    buffer: <<>>,
     tls_opts: []]
 
   @type state :: %__MODULE__{
     pubsub_server: GenServer.server,
-    sock: port,
+    tcp_socket: :inet.socket,
+    socket: Transport.socket,
     topic: String.t | nil,
     transport: module,
+    buffer: binary,
     tls_opts: [
       cacertfile: Path.t,
       certfile: Path.t,
@@ -40,23 +43,22 @@ defmodule PonyExpress.Server do
     {:ok, state}
   end
 
-  @spec allow(GenServer.server) :: {:reply, :ok, state} | {:stop, any, :error, state}
-  def allow(srv), do: GenServer.call(srv, :allow)
-  defp allow_impl(state = %{transport: transport}) do
+  # the server will be very gracious in how long it waits.
+  @server_timeout 1000
+
+  @spec allow(GenServer.server, :inet.socket) ::
+    {:reply, :ok, state} | {:stop, any, :error, state}
+  def allow(srv, socket), do: GenServer.cast(srv, {:allow, socket})
+  defp allow_impl(socket, state = %{transport: transport}) do
     # perform ssl handshake, upgrade to TLS.
     # next, wait for the subscription signal and set up the phoenix
-    # pubsub subscriptions.
-    with {:ok, upgraded_sock} <- transport.handshake(state.sock, tls_opts: state.tls_opts),
-         {:ok, data} <- Packet.get_data(transport, upgraded_sock),
-         {:subscribe, topic} when is_binary(topic) <- data do
-
-      Phoenix.PubSub.subscribe(state.pubsub_server, topic)
-      Process.send_after(self(), :recv, 0)
-      {:reply, :ok, %{state | sock: upgraded_sock}}
-    else
-      {:subscribe, _} -> {:stop, :einval, {:error, "invalid topic"}, state}
-      error = {:error, msg} -> {:stop, msg, error, state}
-      error -> {:stop, :error, error, state}
+    # pubsub subscriptions.  This should arrive in a single packet.
+    case transport.handshake(socket, tls_opts: state.tls_opts) do
+      {:ok, upgraded} ->
+        recv_loop()
+        {:noreply, %{state | tcp_socket: socket, socket: upgraded}}
+      error ->
+        {:stop, error, state}
     end
   end
 
@@ -66,14 +68,22 @@ defmodule PonyExpress.Server do
   end
 
   def handle_info(:recv, state) do
-    case Packet.get_data(state.transport, state.sock) do
-      {:ok, :keepalive} ->
-        Process.send_after(self(), :recv, 0)
-        {:noreply, state}
+    case Packet.get_data(state.transport, state.socket, state.buffer) do
+      {:ok, {:subscribe, topic}, buffer} when is_binary(topic) ->
+        recv_loop()
+        Phoenix.PubSub.subscribe(state.pubsub_server, topic)
+        {:noreply, %{state | topic: topic, buffer: buffer}}
+      {:ok, :keepalive, buffer} ->
+        recv_loop()
+        {:noreply, %{state | buffer: buffer}}
+      {:ok, nil, buffer} ->
+        recv_loop()
+        {:noreply, %{state | buffer: buffer}}
       {:error, :timeout} ->
-        Process.send_after(self(), :recv, 0)
+        recv_loop()
         {:noreply, state}
-      {:ok, _} ->
+      ###########################################
+      {:ok, _, _} ->
         # other packets are invalid.
         {:stop, :einval, state}
       {:error, :closed} ->
@@ -92,12 +102,16 @@ defmodule PonyExpress.Server do
     end
   end
 
-  def handle_call(:allow, _from, state) do
-    allow_impl(state)
+  def handle_cast({:allow, socket}, state) do
+    allow_impl(socket, state)
   end
 
   defp send_term(state = %{transport: transport}, data) do
-    transport.send(state.sock, Packet.encode({:pubsub, data}))
+    transport.send(state.socket, Packet.encode({:pubsub, data}))
+  end
+
+  defp recv_loop do
+    Process.send_after(self(), :recv, 0)
   end
 
 end

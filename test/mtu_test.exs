@@ -7,6 +7,8 @@ defmodule PonyExpressTest.MtuTest do
 
   @localhost {127, 0, 0, 1}
 
+  @moduletag :mtu
+
   test "test that we can send results that exceed the MTU" do
     # create pubsubs locally
     PubSub.PG2.start_link(:mtu_test_src, [])

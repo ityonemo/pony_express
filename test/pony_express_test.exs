@@ -7,6 +7,7 @@ defmodule PonyExpressTest do
 
   @localhost {127, 0, 0, 1}
 
+  @tag :one
   test "full stack pony express experience, but unencryped (for testing)" do
     # create pubsubs locally
     PubSub.PG2.start_link(:test_src, [])

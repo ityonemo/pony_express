@@ -44,6 +44,8 @@ defmodule PonyExpress.Daemon do
 
   use GenServer
 
+  alias PonyExpress.Server
+
   # defaults the transport to TLS for library users. For internal library
   # testing, this defaults to Tcp.  If you're testing your own pony_express
   # server, you can override this with the transport argument.
@@ -164,28 +166,22 @@ defmodule PonyExpress.Daemon do
 
   #############################################################################
   ## utilities
-  
-  defp to_server(state, child_sock) do
-    state
-    |> Map.from_struct
-    |> Map.put(:sock, child_sock)
-  end
 
-  defp do_start_server(state = %{server_supervisor: nil}, child_sock) do
+  defp do_start_server(state = %{server_supervisor: nil}) do
     # unsupervised case.  Not recommended, except for testing purposes.
     state
-    |> to_server(child_sock)
-    |> PonyExpress.Server.start_link()
+    |> Map.from_struct
+    |> Enum.map(&(&1))
+    |> Server.start_link
   end
-  defp do_start_server(state = %{server_supervisor: {module, name}}, child_sock) do
+  defp do_start_server(state = %{server_supervisor: {module, name}}) do
     # custom supervisor case.
-    module.start_child(name,
-      {PonyExpress.Server, to_server(state, child_sock)})
+    module.start_child(name, {Server, Map.from_struct(state)})
   end
-  defp do_start_server(state = %{server_supervisor: sup}, child_sock) do
+  defp do_start_server(state = %{server_supervisor: sup}) do
     # default, DynamicSupervisor case
     DynamicSupervisor.start_child(sup,
-      {PonyExpress.Server, to_server(state, child_sock)})
+      {Server, Map.from_struct(state)})
   end
 
   #############################################################################
@@ -193,11 +189,11 @@ defmodule PonyExpress.Daemon do
 
   def handle_info(:accept, state = %{transport: transport}) do
     with {:ok, child_sock} <- transport.accept(state.sock, state.timeout),
-         {:ok, srv_pid} <- do_start_server(state, child_sock) do
+         {:ok, srv_pid} <- do_start_server(state) do
       # transfer ownership to the child server.
       :gen_tcp.controlling_process(child_sock, srv_pid)
-      # signal to the child server that the ownership has been transferred.
-      PonyExpress.Server.allow(srv_pid)
+      # transfer ownership to the server, and send it to the server
+      Server.allow(srv_pid, child_sock)
     else
       {:error, :timeout} ->
         # this is normal.  Just quit out and enter the accept loop.

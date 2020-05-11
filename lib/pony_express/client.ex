@@ -62,6 +62,7 @@ defmodule PonyExpress.Client do
   defstruct @enforce_keys ++ [
     sock: nil,
     transport: @default_transport,
+    buffer: <<>>,
     tls_opts: [],
   ]
 
@@ -74,6 +75,7 @@ defmodule PonyExpress.Client do
     sock: port,
     pubsub_server: GenServer.server,
     topic: String.t,
+    buffer: binary,
     transport: module,
     tls_opts: keyword
   }
@@ -133,7 +135,7 @@ defmodule PonyExpress.Client do
       # send a subscription message to the server
       send_term(new_state, {:subscribe, state.topic})
       #then start the receive loop.
-      trigger_receive()
+      recv_loop()
       {:ok, new_state}
     else
       {:error, :econnrefused} ->
@@ -151,14 +153,18 @@ defmodule PonyExpress.Client do
   ## MESSAGE IMPLEMENTATIONS
 
   defp recv_impl(state = %{transport: transport}) do
-    with {:ok, term} <- Packet.get_data(transport, state.sock),
+    with {:ok, term, buffer} when not is_nil(term) <-
+           Packet.get_data(transport, state.sock, state.buffer),
          {:pubsub, pubsub_msg} <- term do
       Phoenix.PubSub.broadcast(state.pubsub_server, state.topic, pubsub_msg)
-      trigger_receive()
-      {:noreply, state}
+      recv_loop()
+      {:noreply, %{state | buffer: buffer}}
     else
+      {:ok, nil, buffer} ->
+        recv_loop()
+        {:noreply, %{state | buffer: buffer}}
       {:error, :timeout} -> # normal receive timeout event
-        trigger_receive()
+        recv_loop()
         {:noreply, state}
       {:error, any} ->
         Logger.error("error receiving message #{logformat any}")
@@ -190,7 +196,7 @@ defmodule PonyExpress.Client do
   defp logformat(content) when is_list(content), do: content
   defp logformat(content), do: inspect(content)
 
-  defp trigger_receive do
+  defp recv_loop do
     Process.send_after(self(), :recv, 0)
   end
 end
