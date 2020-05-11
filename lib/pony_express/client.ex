@@ -61,7 +61,6 @@ defmodule PonyExpress.Client do
 
   defstruct @enforce_keys ++ [
     sock: nil,
-    pubsub_server: nil,
     transport: @default_transport,
     tls_opts: [],
   ]

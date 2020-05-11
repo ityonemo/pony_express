@@ -46,7 +46,8 @@ defmodule PonyExpressTest do
 
     daemon_opts = [
       pubsub_server: :test_ssl_src,
-      port: 0
+      port: 0,
+      transport: Transport.Tls
       ] ++ tls_opts("server")
 
     {:ok, daemon} = Daemon.start_link(daemon_opts)
@@ -57,6 +58,7 @@ defmodule PonyExpressTest do
       server: @localhost,
       port: dport,
       topic: "pony_express",
+      transport: Transport.Tls,
       pubsub_server: :test_ssl_tgt] ++ tls_opts("server")
 
     Client.start_link(client_opts)

@@ -103,6 +103,7 @@ defmodule PonyExpress.Daemon do
     }
   end
 
+  # TODO: move this filtering to `Transport`
   @default_listen_opts [reuseaddr: true]
   @tcp_listen_opts [:buffer, :delay_send, :deliver, :dontroute, :exit_on_close,
   :header, :highmsgq_watermark, :high_watermark, :keepalive, :linger,
@@ -163,6 +164,7 @@ defmodule PonyExpress.Daemon do
 
   #############################################################################
   ## utilities
+  
   defp to_server(state, child_sock) do
     state
     |> Map.from_struct

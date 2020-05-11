@@ -36,6 +36,12 @@
 - update to use `connection` library
 - update to use `transport` library
 
+## 0.4.1
+
+- fix TLS settings bug
+- make TLS test actually use TLS
+- fix duplicate key error
+
 ## Future Versions:
 
 - upgrade to Phoenix PubSub 2.0.0
