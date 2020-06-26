@@ -46,6 +46,6 @@
 
 - accept the situation when multiple packets are squished together
 
-## Future Versions:
+## 0.4.3
 
-- upgrade to Phoenix PubSub 2.0.0
+- upgraded to Phoenix PubSub 2.0.0
