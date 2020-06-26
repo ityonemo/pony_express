@@ -11,8 +11,7 @@ defmodule PonyExpressTest.MtuTest do
 
   test "test that we can send results that exceed the MTU" do
     # create pubsubs locally
-    PubSub.PG2.start_link(:mtu_test_src, [])
-    PubSub.PG2.start_link(:mtu_test_tgt, [])
+    PubSubStarter.start_link([:mtu_test_src, :mtu_test_tgt])
 
     Process.sleep(100)
 

@@ -17,8 +17,7 @@ defmodule PonyExpress.OtpTest do
       # cache the test_pid
       test_pid = self()
 
-      Phoenix.PubSub.PG2.start_link(:otp_srv_1, [])
-      Phoenix.PubSub.PG2.start_link(:otp_cli_1, [])
+      PubSubStarter.start_link([:otp_srv_1, :otp_cli_1])
 
       # subscribe to the client pubsub server only.
       Phoenix.PubSub.subscribe(:otp_cli_1, "otp_test_1")
@@ -80,8 +79,7 @@ defmodule PonyExpress.OtpTest do
       # cache the test_pid
       test_pid = self()
 
-      Phoenix.PubSub.PG2.start_link(:otp_srv_2, [])
-      Phoenix.PubSub.PG2.start_link(:otp_cli_2, [])
+      PubSubStarter.start_link([:otp_srv_2, :otp_cli_2])
 
       # subscribe to the client pubsub server only.
       Phoenix.PubSub.subscribe(:otp_cli_2, "otp_test_2")
@@ -146,8 +144,7 @@ defmodule PonyExpress.OtpTest do
       # cache the test_pid
       test_pid = self()
 
-      Phoenix.PubSub.PG2.start_link(:otp_srv_3, [])
-      Phoenix.PubSub.PG2.start_link(:otp_cli_3, [])
+      PubSubStarter.start_link([:otp_srv_3, :otp_cli_3])
 
       # subscribe to the client pubsub server only.
       Phoenix.PubSub.subscribe(:otp_cli_3, "otp_test_3")

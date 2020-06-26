@@ -4,7 +4,7 @@ defmodule PonyExpress.MixProject do
   def project do
     [
       app: :pony_express,
-      version: "0.4.1",
+      version: "0.4.3",
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -29,7 +29,7 @@ defmodule PonyExpress.MixProject do
       {:credo, "~> 1.2", only: [:test, :dev], runtime: false},
       {:dialyxir, "~> 0.5.1", only: :dev, runtime: false},
       {:ex_doc, "~> 0.21.2", only: :dev, runtime: :false},
-      {:phoenix_pubsub, "~> 1.1"},
+      {:phoenix_pubsub, "~> 2.0"},
       # connection and transport primitives
       {:connection, "~> 1.0"},
       {:transport, "~> 0.1.0"},

@@ -7,11 +7,10 @@ defmodule PonyExpressTest do
 
   @localhost {127, 0, 0, 1}
 
-  @tag :one
   test "full stack pony express experience, but unencryped (for testing)" do
     # create pubsubs locally
-    PubSub.PG2.start_link(:test_src, [])
-    PubSub.PG2.start_link(:test_tgt, [])
+
+    PubSubStarter.start_link([:test_src, :test_tgt])
 
     PubSub.subscribe(:test_tgt, "pony_express")
 
@@ -37,8 +36,7 @@ defmodule PonyExpressTest do
   @tag :tls
   test "pony express with ssl activated" do
     # create pubsubs locally
-    PubSub.PG2.start_link(:test_ssl_src, [])
-    PubSub.PG2.start_link(:test_ssl_tgt, [])
+    PubSubStarter.start_link([:test_ssl_src, :test_ssl_tgt])
 
     import PonyExpressTest.TlsOpts
 
@@ -65,7 +63,7 @@ defmodule PonyExpressTest do
 
     # give the system some time to settle.
     # TODO: make this a call query on the client.
-    Process.sleep(100)
+    Process.sleep(200)
 
     PubSub.broadcast(:test_ssl_src, "pony_express", :ping)
 

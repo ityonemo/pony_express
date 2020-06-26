@@ -42,6 +42,10 @@
 - make TLS test actually use TLS
 - fix duplicate key error
 
+## 0.4.2
+
+- accept the situation when multiple packets are squished together
+
 ## Future Versions:
 
 - upgrade to Phoenix PubSub 2.0.0
