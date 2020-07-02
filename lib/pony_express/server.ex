@@ -25,7 +25,7 @@ defmodule PonyExpress.Server do
 
   alias PonyExpress.Packet
 
-  if Application.compile_env(:pony_express, :use_multiverses) do
+  if Multiverses.active?() do
     @forward_callers [forward_callers: true]
   else
     @forward_callers []

@@ -85,7 +85,7 @@ defmodule PonyExpress.Daemon do
     ]
   }
 
-  if Application.compile_env(:pony_express, :use_multiverses) do
+  if Multiverses.active?() do
     @forward_callers [:forward_callers]
   else
     @forward_callers []
