@@ -10,7 +10,7 @@ defmodule PonyExpress.OtpTest do
   use ExUnit.Case, async: true
   import ExUnit.CaptureLog
 
-  @localhost {127, 0, 0, 1}
+  @localhost IP.localhost
 
   describe "if you kill the server component" do
     test "daemon, the connection self-heals" do
@@ -38,7 +38,7 @@ defmodule PonyExpress.OtpTest do
 
         [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
 
-        port = PonyExpress.Daemon.port(daemon_pid)
+        {:ok, port} = PonyExpress.Daemon.port(daemon_pid)
 
         DynamicSupervisor.start_link(strategy: :one_for_one, name: CliSupervisor1)
 
@@ -96,7 +96,7 @@ defmodule PonyExpress.OtpTest do
         }], strategy: :one_for_one)
 
         [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
-        port = Daemon.port(daemon_pid)
+        {:ok, port} = Daemon.port(daemon_pid)
 
         DynamicSupervisor.start_link(strategy: :one_for_one, name: CliSupervisor2)
 
@@ -164,7 +164,7 @@ defmodule PonyExpress.OtpTest do
         }], strategy: :one_for_one)
 
         [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
-        port = Daemon.port(daemon_pid)
+        {:ok, port} = Daemon.port(daemon_pid)
 
         DynamicSupervisor.start_link(strategy: :one_for_one, name: CliSupervisor3)
 

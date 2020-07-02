@@ -42,6 +42,7 @@ defmodule PonyExpress.Daemon do
   - `:transport` - specify an alternative transport module besides TLS.  See `Transport`.
   """
 
+  use Multiverses, with: [DynamicSupervisor, GenServer]
   use GenServer
 
   alias PonyExpress.Server
@@ -84,15 +85,25 @@ defmodule PonyExpress.Daemon do
     ]
   }
 
+  if Application.compile_env(:pony_express, :use_multiverses) do
+    @forward_callers [:forward_callers]
+  else
+    @forward_callers []
+  end
+
+  @gen_server_opts [:debug, :timeout, :hibernate_after, :spawn_opt, :name] ++ @forward_callers
+
   @spec start(keyword) :: GenServer.on_start
   def start(options) do
-    GenServer.start(__MODULE__, options)
+    gen_server_options = Keyword.take(options, @gen_server_opts)
+    GenServer.start(__MODULE__, options, gen_server_options)
   end
 
   @spec start_link(keyword) :: GenServer.on_start
-  def start_link(options!) do
-    options! = put_in(options!, [:spawn_opt], [:link | (options![:spawn_opt] || [])])
-    GenServer.start_link(__MODULE__, options!)
+  def start_link(options) do
+    options
+    |> put_in([:spawn_opt], [:link | Keyword.get(options, :spawn_opt, [])])
+    |> start
   end
 
   def child_spec(opts) do
@@ -146,12 +157,12 @@ defmodule PonyExpress.Daemon do
   @spec port_impl(state) :: {:reply, :inet.port_number, state}
   defp port_impl(state = %{port: 0}) do
     case :inet.port(state.sock) do
-      {:ok, port} -> {:reply, port, state}
+      {:ok, port} -> {:reply, {:ok, port}, state}
       {:error, e} -> raise "error: #{e}"
     end
   end
   defp port_impl(state) do
-    {:reply, state.port, state}
+    {:reply, {:ok, state.port}, state}
   end
 
   # internal function (but also available for public use) that gives you

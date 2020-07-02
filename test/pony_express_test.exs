@@ -5,7 +5,7 @@ defmodule PonyExpressTest do
   alias PonyExpress.Daemon
   alias PonyExpress.Client
 
-  @localhost {127, 0, 0, 1}
+  @localhost IP.localhost
 
   test "full stack pony express experience, but unencryped (for testing)" do
     # create pubsubs locally
@@ -17,10 +17,10 @@ defmodule PonyExpressTest do
     {:ok, daemon} = Daemon.start_link(port: 0,
                                       pubsub_server: :test_src)
 
-    dport = Daemon.port(daemon)
+    {:ok, port} = Daemon.port(daemon)
 
     Client.start_link(server: @localhost,
-                      port: dport,
+                      port: port,
                       topic: "pony_express",
                       pubsub_server: :test_tgt)
 
@@ -50,11 +50,11 @@ defmodule PonyExpressTest do
 
     {:ok, daemon} = Daemon.start_link(daemon_opts)
 
-    dport = Daemon.port(daemon)
+    {:ok, port} = Daemon.port(daemon)
 
     client_opts = [
       server: @localhost,
-      port: dport,
+      port: port,
       topic: "pony_express",
       transport: Transport.Tls,
       pubsub_server: :test_ssl_tgt] ++ tls_opts("server")

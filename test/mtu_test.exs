@@ -5,7 +5,7 @@ defmodule PonyExpressTest.MtuTest do
   alias PonyExpress.Daemon
   alias PonyExpress.Client
 
-  @localhost {127, 0, 0, 1}
+  @localhost IP.localhost
 
   @moduletag :mtu
 
@@ -20,10 +20,10 @@ defmodule PonyExpressTest.MtuTest do
     {:ok, daemon} = Daemon.start_link(port: 0,
                                       pubsub_server: :mtu_test_src)
 
-    dport = Daemon.port(daemon)
+    {:ok, port} = Daemon.port(daemon)
 
     Client.start_link(server: @localhost,
-                      port: dport,
+                      port: port,
                       topic: "pony_express",
                       pubsub_server: :mtu_test_tgt)
 

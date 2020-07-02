@@ -2,6 +2,9 @@ defmodule PonyExpress.Server do
 
   @moduledoc false
 
+  use Multiverses, with: [GenServer, Phoenix.PubSub]
+  use GenServer
+
   defstruct [:pubsub_server, :tcp_socket, :socket, :topic, :transport,
     buffer: <<>>,
     tls_opts: []]
@@ -22,9 +25,15 @@ defmodule PonyExpress.Server do
 
   alias PonyExpress.Packet
 
+  if Application.compile_env(:pony_express, :use_multiverses) do
+    @forward_callers [forward_callers: true]
+  else
+    @forward_callers []
+  end
+
   @spec start_link(keyword) :: GenServer.on_start
   def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts)
+    GenServer.start_link(__MODULE__, opts, @forward_callers)
   end
 
   def child_spec(opts) do
@@ -39,8 +48,7 @@ defmodule PonyExpress.Server do
 
   @spec init(keyword) :: {:ok, state}
   def init(opts) do
-    state = struct(__MODULE__, opts)
-    {:ok, state}
+    {:ok, struct(__MODULE__, opts)}
   end
 
   # the server will be very gracious in how long it waits.
@@ -63,7 +71,7 @@ defmodule PonyExpress.Server do
   end
 
   def handle_tcp({:subscribe, topic}, state) do
-    Phoenix.PubSub.subscribe(state.pubsub_server, topic)
+    PubSub.subscribe(state.pubsub_server, topic)
     {:noreply, %{state | topic: topic}}
   end
 
@@ -71,7 +79,7 @@ defmodule PonyExpress.Server do
     case Packet.get_data(state.transport, state.socket, state.buffer) do
       {:ok, {:subscribe, topic}, buffer} when is_binary(topic) ->
         recv_loop()
-        Phoenix.PubSub.subscribe(state.pubsub_server, topic)
+        PubSub.subscribe(state.pubsub_server, topic)
         {:noreply, %{state | topic: topic, buffer: buffer}}
       {:ok, :keepalive, buffer} ->
         recv_loop()

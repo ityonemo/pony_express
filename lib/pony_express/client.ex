@@ -51,10 +51,12 @@ defmodule PonyExpress.Client do
   - `:transport` - specify an alternative transport module besides TLS.  See `Transport`.
   """
 
+  use Multiverses, with: Phoenix.PubSub
+
   if Mix.env in [:dev, :test] do
     @default_transport Transport.Tcp
   else
-    @default_transport Application.get_env(:pony_express, :transport, Transport.Tls)
+    @default_transport Application.compile_env(:pony_express, :transport, Transport.Tls)
   end
 
   @enforce_keys [:server, :port, :pubsub_server, :topic]
@@ -99,28 +101,44 @@ defmodule PonyExpress.Client do
 
   @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after]
 
-  def start(opts) do
-    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    is_binary(opts[:topic]) or raise "pony express client needs a topic"
+  def start(options) do
+    {gen_server_opts, inner_opts} = options
+    |> Keyword.put_new(:transport, @default_transport)
+    |> marshal_callers
+    |> Keyword.split(@gen_server_opts)
+
+    is_binary(options[:topic]) or raise "pony express client needs a topic"
     Connection.start(__MODULE__, inner_opts, gen_server_opts)
   end
 
   @spec start_link(keyword) :: GenServer.on_start
-  def start_link(opts) do
-    opts
-    |> put_in([:spawn_opt], [:link | (opts[:spawn_opt] || [])])
+  def start_link(options) do
+    options
+    |> put_in([:spawn_opt], [:link | Keyword.get(options, :spawn_opt, [])])
     |> start
   end
 
   @impl true
   @spec init(keyword) :: {:connect, :init, state}
-  def init(options!) do
-    options! = Keyword.put_new(options!, :transport, @default_transport)
+  def init(options) do
+    unmarshal_callers(options)
     Enum.each(@enforce_keys, fn key ->
-      Keyword.has_key?(options!, key) or raise ArgumentError,
+      Keyword.has_key?(options, key) or raise ArgumentError,
         "client initialization is missing option #{key}"
     end)
-    {:connect, :init, struct(__MODULE__, options!)}
+    {:connect, :init, struct(__MODULE__, options)}
+  end
+
+  defp marshal_callers(options) do
+    if options[:forward_callers] do
+      Keyword.put(options, :callers, [self() | Process.get(:"$callers", [])])
+    else
+      options
+    end
+  end
+
+  defp unmarshal_callers(options) do
+    if callers = options[:callers], do: Process.put(:"$callers", callers)
   end
 
   ##################################################################################
@@ -156,7 +174,7 @@ defmodule PonyExpress.Client do
     with {:ok, term, buffer} when not is_nil(term) <-
            Packet.get_data(transport, state.sock, state.buffer),
          {:pubsub, pubsub_msg} <- term do
-      Phoenix.PubSub.broadcast(state.pubsub_server, state.topic, pubsub_msg)
+      PubSub.broadcast(state.pubsub_server, state.topic, pubsub_msg)
       recv_loop()
       {:noreply, %{state | buffer: buffer}}
     else

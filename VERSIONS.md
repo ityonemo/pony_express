@@ -49,3 +49,8 @@
 ## 0.4.3
 
 - upgraded to Phoenix PubSub 2.0.0
+
+## 0.4.4
+
+- integration of `Multiverses`
+- change PonyExpress.port to return an ok tuple 
