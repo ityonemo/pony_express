@@ -72,7 +72,7 @@ by adding `pony_express` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pony_express, "~> 0.4.1"}
+    {:pony_express, "~> 0.5.0"}
   ]
 end
 ```

@@ -50,7 +50,7 @@
 
 - upgraded to Phoenix PubSub 2.0.0
 
-## 0.4.4
+## 0.5.0
 
 - integration of `Multiverses`
-- change PonyExpress.port to return an ok tuple 
+- change PonyExpress.port to return an ok tuple

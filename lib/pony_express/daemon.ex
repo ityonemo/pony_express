@@ -151,10 +151,10 @@ defmodule PonyExpress.Daemon do
   Useful for tests - when we want to assign it a port of 0 so that it gets
   "any free port" of the system.
   """
-  @spec port(GenServer.server) :: :inet.port_number
+  @spec port(GenServer.server) :: {:ok, :inet.port_number}
   def port(srv), do: GenServer.call(srv, :port)
 
-  @spec port_impl(state) :: {:reply, :inet.port_number, state}
+  @spec port_impl(state) :: {:reply, {:ok, :inet.port_number}, state}
   defp port_impl(state = %{port: 0}) do
     case :inet.port(state.sock) do
       {:ok, port} -> {:reply, {:ok, port}, state}
