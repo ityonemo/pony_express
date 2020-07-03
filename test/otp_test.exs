@@ -3,64 +3,77 @@ defmodule PonyExpress.OtpTest do
   # Tests to make sure that pony express does
   # the right thing (in an OTP sense)
   #
-
-  alias PonyExpress.Daemon
-  alias PonyExpress.Client
-
   use ExUnit.Case, async: true
   import ExUnit.CaptureLog
 
+  use Multiverses, with: [Phoenix.PubSub, DynamicSupervisor]
+  require Multiverses.Supervisor
+  alias PonyExpress.Daemon
+  alias PonyExpress.Client
+
   @localhost IP.localhost
+
+  defmodule DaemonSupervisor do
+    use Multiverses, with: Supervisor
+    use Supervisor
+
+    def start_link(opts) do
+      Supervisor.start_link(__MODULE__, nil, opts ++ [forward_callers: true])
+    end
+
+    def init(_) do
+      children = [{Daemon,
+        pubsub_server: :otp_server,
+        server_supervisor: ServerSupervisor,
+        forward_callers: true}]
+      Supervisor.init(children, strategy: :one_for_one)
+    end
+  end
+
+  setup_all do
+    # set up our pubsub server.
+    PubSubStarter.start_link([:otp_client, :otp_server])
+    # set up a dynamic supervisor for the servers
+    :ok
+  end
+
+  setup do
+    DynamicSupervisor.start_link(name: ServerSupervisor, strategy: :one_for_one)
+    DynamicSupervisor.start_link(name: ClientSupervisor, strategy: :one_for_one)
+    :ok
+  end
 
   describe "if you kill the server component" do
     test "daemon, the connection self-heals" do
       # cache the test_pid
       test_pid = self()
 
-      PubSubStarter.start_link([:otp_srv_1, :otp_cli_1])
-
       # subscribe to the client pubsub server only.
-      Phoenix.PubSub.subscribe(:otp_cli_1, "otp_test_1")
+      PubSub.subscribe(:otp_client, "test")
 
-      # supervision needs to happen out of band from the test because
-      # we're going to send a test kill signal to the daemon.
-      supervisors = spawn(fn ->
-        # for this one, use the default port.  We can't use port 0
-        # because on restart, the server's port will change, and
-        # the client won't be able to find it again.
+      # daemon operations.
+      {:ok, daemon_sup} = DaemonSupervisor.start_link(strategy: :one_for_one)
 
-        DynamicSupervisor.start_link(strategy: :one_for_one, name: SrvSupervisor1)
+      # find the daemon inside the supervisor.
+      [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
+      {:ok, port} = PonyExpress.Daemon.port(daemon_pid)
 
-        {:ok, daemon_sup} = Supervisor.start_link([{Daemon,
-          pubsub_server: :otp_srv_1,
-          server_supervisor: SrvSupervisor1
-        }], strategy: :one_for_one)
+      # connect a supervised client.
+      DynamicSupervisor.start_child(
+        ClientSupervisor,
+        {Client,
+          port: port,
+          server: @localhost,
+          pubsub_server: :otp_client,
+          topic: "test",
+          forward_callers: true
+        })
 
-        [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
-
-        {:ok, port} = PonyExpress.Daemon.port(daemon_pid)
-
-        DynamicSupervisor.start_link(strategy: :one_for_one, name: CliSupervisor1)
-
-        # connect a supervised client.
-        {:ok, _client_pid} = DynamicSupervisor.start_child(
-          CliSupervisor1,
-          {Client,
-            port: port,
-            server: @localhost,
-            pubsub_server: :otp_cli_1,
-            topic: "otp_test_1",
-          })
-
-        send(test_pid, {:daemon, daemon_pid})
-        receive do :done -> :ok end
-      end)
-
-      daemon_pid = receive do {:daemon, daemon_pid} -> daemon_pid end
+      # allow the client to warm up.
       Process.sleep(200)
 
       # test the normal broadcast route
-      Phoenix.PubSub.broadcast(:otp_srv_1, "otp_test_1", {:test, "otp_test_1a"})
+      PubSub.broadcast(:otp_server, "test", {:test, "otp_test_1a"})
       assert_receive {:test, "otp_test_1a"}, 500
 
       # now, kill the daemon and repeat the process.
@@ -69,59 +82,41 @@ defmodule PonyExpress.OtpTest do
 
       refute Process.alive?(daemon_pid)
 
-      Phoenix.PubSub.broadcast(:otp_srv_1, "otp_test_1", {:test, "otp_test_1b"})
+      PubSub.broadcast(:otp_server, "test", {:test, "otp_test_1b"})
       assert_receive {:test, "otp_test_1b"}, 500
-
-      send(supervisors, :done)
     end
 
     test "server, the connection self-heals" do
       # cache the test_pid
       test_pid = self()
 
-      PubSubStarter.start_link([:otp_srv_2, :otp_cli_2])
-
       # subscribe to the client pubsub server only.
-      Phoenix.PubSub.subscribe(:otp_cli_2, "otp_test_2")
+      PubSub.subscribe(:otp_client, "test")
 
-      # supervision needs to happen out of band from the test because
-      # we're going to send a test kill signal to the daemon.
-      supervisors = spawn(fn ->
-        # start up a dynamic supervisor for the servers.
-        DynamicSupervisor.start_link(strategy: :one_for_one, name: SrvSupervisor2)
+      # daemon operations.
+      {:ok, daemon_sup} = DaemonSupervisor.start_link(strategy: :one_for_one)
+      [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
+      {:ok, port} = Daemon.port(daemon_pid)
 
-        {:ok, daemon_sup} = Supervisor.start_link([{Daemon,
-          pubsub_server: :otp_srv_2,
-          server_supervisor: SrvSupervisor2
-        }], strategy: :one_for_one)
+      {:ok, client_sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
 
-        [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
-        {:ok, port} = Daemon.port(daemon_pid)
+      # connect a supervised client.
+      DynamicSupervisor.start_child(
+        ClientSupervisor,
+        {Client,
+          server: @localhost,
+          port: port,
+          pubsub_server: :otp_client,
+          topic: "test",
+          forward_callers: true
+        })
 
-        DynamicSupervisor.start_link(strategy: :one_for_one, name: CliSupervisor2)
-
-        # connect a supervised client.
-        {:ok, _client_pid} = DynamicSupervisor.start_child(
-          CliSupervisor2,
-          {Client,
-            server: @localhost,
-            port: port,
-            pubsub_server: :otp_cli_2,
-            topic: "otp_test_2",
-          })
-
-        # wait for the connection to complete.
-        Process.sleep(200)
-        [{_, server_pid, _, _}] = DynamicSupervisor.which_children(SrvSupervisor2)
-
-        send(test_pid, {:server, server_pid})
-        receive do :done -> :ok end
-      end)
-
-      server_pid = receive do {:server, server_pid} -> server_pid end
+      # wait for the connection to complete.
+      Process.sleep(200)
+      [{_, server_pid, _, _}] = DynamicSupervisor.which_children(ServerSupervisor)
 
       # test the normal broadcast route
-      Phoenix.PubSub.broadcast(:otp_srv_2, "otp_test_2", {:test, "otp_test_2a"})
+      PubSub.broadcast(:otp_server, "test", {:test, "otp_test_2a"})
       assert_receive {:test, "otp_test_2a"}, 500
 
       # now, kill the server. This will trigger the
@@ -132,10 +127,8 @@ defmodule PonyExpress.OtpTest do
 
       refute Process.alive?(server_pid)
 
-      Phoenix.PubSub.broadcast(:otp_srv_2, "otp_test_2", {:test, "otp_test_2b"})
+      PubSub.broadcast(:otp_server, "test", {:test, "otp_test_2b"})
       assert_receive {:test, "otp_test_2b"}, 500
-
-      send(supervisors, :done)
     end
   end
 
@@ -144,49 +137,31 @@ defmodule PonyExpress.OtpTest do
       # cache the test_pid
       test_pid = self()
 
-      PubSubStarter.start_link([:otp_srv_3, :otp_cli_3])
-
       # subscribe to the client pubsub server only.
-      Phoenix.PubSub.subscribe(:otp_cli_3, "otp_test_3")
+      PubSub.subscribe(:otp_client, "test")
 
-      # supervision needs to happen out of band from the test because
-      # we're going to send a test kill signal to the daemon.
-      supervisors = spawn(fn ->
-        # for this one, use the default port.  We can't use port 0
-        # because on restart, the server's port will change, and
-        # the client won't be able to find it again.
+      # daemon operations.
+      {:ok, daemon_sup} = DaemonSupervisor.start_link(strategy: :one_for_one)
+      [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
+      {:ok, port} = Daemon.port(daemon_pid)
 
-        DynamicSupervisor.start_link(strategy: :one_for_one, name: SrvSupervisor3)
+      DynamicSupervisor.start_link(strategy: :one_for_one, name: CliSupervisor3)
 
-        {:ok, daemon_sup} = Supervisor.start_link([{Daemon,
-          pubsub_server: :otp_srv_3,
-          server_supervisor: SrvSupervisor3
-        }], strategy: :one_for_one)
+      # connect a supervised client.
+      {:ok, client_pid} = DynamicSupervisor.start_child(
+        ClientSupervisor,
+        {Client,
+          server: @localhost,
+          port: port,
+          pubsub_server: :otp_client,
+          topic: "test",
+          forward_callers: true
+        })
 
-        [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
-        {:ok, port} = Daemon.port(daemon_pid)
-
-        DynamicSupervisor.start_link(strategy: :one_for_one, name: CliSupervisor3)
-
-        # connect a supervised client.
-        {:ok, client_pid} = DynamicSupervisor.start_child(
-          CliSupervisor3,
-          {Client,
-            server: @localhost,
-            port: port,
-            pubsub_server: :otp_cli_3,
-            topic: "otp_test_3",
-          })
-
-        send(test_pid, {:client, client_pid})
-        receive do :done -> :ok end
-      end)
-
-      client_pid = receive do {:client, client_pid} -> client_pid end
       Process.sleep(200)
 
       # test the normal broadcast route
-      Phoenix.PubSub.broadcast(:otp_srv_3, "otp_test_3", {:test, "otp_test_3a"})
+      PubSub.broadcast(:otp_server, "test", {:test, "otp_test_3a"})
       assert_receive {:test, "otp_test_3a"}, 500
 
       # now, kill the client and repeat the process.
@@ -195,10 +170,8 @@ defmodule PonyExpress.OtpTest do
 
       refute Process.alive?(client_pid)
 
-      Phoenix.PubSub.broadcast(:otp_srv_3, "otp_test_3", {:test, "otp_test_3b"})
+      PubSub.broadcast(:otp_server, "test", {:test, "otp_test_3b"})
       assert_receive {:test, "otp_test_3b"}, 500
-
-      send(supervisors, :done)
     end
   end
 

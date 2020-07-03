@@ -1,9 +1,10 @@
 defmodule PonyExpressTest do
   use ExUnit.Case
 
-  alias Phoenix.PubSub
   alias PonyExpress.Daemon
   alias PonyExpress.Client
+
+  use Multiverses, with: Phoenix.PubSub
 
   @localhost IP.localhost
 
@@ -15,14 +16,16 @@ defmodule PonyExpressTest do
     PubSub.subscribe(:test_tgt, "pony_express")
 
     {:ok, daemon} = Daemon.start_link(port: 0,
-                                      pubsub_server: :test_src)
+                                      pubsub_server: :test_src,
+                                      forward_callers: true)
 
     {:ok, port} = Daemon.port(daemon)
 
     Client.start_link(server: @localhost,
                       port: port,
                       topic: "pony_express",
-                      pubsub_server: :test_tgt)
+                      pubsub_server: :test_tgt,
+                      forward_callers: true)
 
     # give the system some time to settle.
     # TODO: make this a call query on the client.
@@ -45,7 +48,8 @@ defmodule PonyExpressTest do
     daemon_opts = [
       pubsub_server: :test_ssl_src,
       port: 0,
-      transport: Transport.Tls
+      transport: Transport.Tls,
+      forward_callers: true
       ] ++ tls_opts("server")
 
     {:ok, daemon} = Daemon.start_link(daemon_opts)
@@ -57,7 +61,8 @@ defmodule PonyExpressTest do
       port: port,
       topic: "pony_express",
       transport: Transport.Tls,
-      pubsub_server: :test_ssl_tgt] ++ tls_opts("server")
+      pubsub_server: :test_ssl_tgt,
+      forward_callers: true] ++ tls_opts("server")
 
     Client.start_link(client_opts)
 

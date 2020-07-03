@@ -1,7 +1,8 @@
 defmodule PonyExpressTest.MtuTest do
   use ExUnit.Case
 
-  alias Phoenix.PubSub
+  use Multiverses, with: Phoenix.PubSub
+  
   alias PonyExpress.Daemon
   alias PonyExpress.Client
 
@@ -18,14 +19,16 @@ defmodule PonyExpressTest.MtuTest do
     PubSub.subscribe(:mtu_test_tgt, "pony_express")
 
     {:ok, daemon} = Daemon.start_link(port: 0,
-                                      pubsub_server: :mtu_test_src)
+                                      pubsub_server: :mtu_test_src,
+                                      forward_callers: true)
 
     {:ok, port} = Daemon.port(daemon)
 
     Client.start_link(server: @localhost,
                       port: port,
                       topic: "pony_express",
-                      pubsub_server: :mtu_test_tgt)
+                      pubsub_server: :mtu_test_tgt,
+                      forward_callers: true)
 
     # give the system some time to settle.
     # TODO: make this a call query on the client.
