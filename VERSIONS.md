@@ -54,3 +54,7 @@
 
 - integration of `Multiverses`
 - change PonyExpress.port to return an ok tuple
+
+## 0.5.1
+
+- improvement of tests and better Multiverses integration
