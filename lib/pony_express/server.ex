@@ -51,11 +51,7 @@ defmodule PonyExpress.Server do
     {:ok, struct(__MODULE__, opts)}
   end
 
-  # the server will be very gracious in how long it waits.
-  @server_timeout 1000
-
-  @spec allow(GenServer.server, :inet.socket) ::
-    {:reply, :ok, state} | {:stop, any, :error, state}
+  @spec allow(GenServer.server, :inet.socket) :: :ok
   def allow(srv, socket), do: GenServer.cast(srv, {:allow, socket})
   defp allow_impl(socket, state = %{transport: transport}) do
     # perform ssl handshake, upgrade to TLS.
