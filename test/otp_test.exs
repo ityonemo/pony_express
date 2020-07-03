@@ -45,9 +45,6 @@ defmodule PonyExpress.OtpTest do
 
   describe "if you kill the server component" do
     test "daemon, the connection self-heals" do
-      # cache the test_pid
-      test_pid = self()
-
       # subscribe to the client pubsub server only.
       PubSub.subscribe(:otp_client, "test")
 
@@ -87,9 +84,6 @@ defmodule PonyExpress.OtpTest do
     end
 
     test "server, the connection self-heals" do
-      # cache the test_pid
-      test_pid = self()
-
       # subscribe to the client pubsub server only.
       PubSub.subscribe(:otp_client, "test")
 
@@ -97,8 +91,6 @@ defmodule PonyExpress.OtpTest do
       {:ok, daemon_sup} = DaemonSupervisor.start_link(strategy: :one_for_one)
       [{_, daemon_pid, _, _}] = Supervisor.which_children(daemon_sup)
       {:ok, port} = Daemon.port(daemon_pid)
-
-      {:ok, client_sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
 
       # connect a supervised client.
       DynamicSupervisor.start_child(
@@ -134,9 +126,6 @@ defmodule PonyExpress.OtpTest do
 
   describe "if you kill the client component" do
     test "the connection self-heals" do
-      # cache the test_pid
-      test_pid = self()
-
       # subscribe to the client pubsub server only.
       PubSub.subscribe(:otp_client, "test")
 

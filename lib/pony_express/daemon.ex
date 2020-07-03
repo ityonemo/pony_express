@@ -96,6 +96,7 @@ defmodule PonyExpress.Daemon do
   @spec start(keyword) :: GenServer.on_start
   def start(options) do
     gen_server_options = Keyword.take(options, @gen_server_opts)
+
     GenServer.start(__MODULE__, options, gen_server_options)
   end
 
