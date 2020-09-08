@@ -16,7 +16,6 @@ defmodule PonyExpressTest.MultiverseTest do
     :ok
   end
 
-  @tag :one
   test "pony express can bridge multiverses" do
     # cache the test_pid
     test_pid = self()

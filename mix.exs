@@ -29,8 +29,8 @@ defmodule PonyExpress.MixProject do
       {:credo, "~> 1.2", only: [:test, :dev], runtime: false},
       {:dialyxir, "~> 0.5.1", only: :dev, runtime: false},
       {:ex_doc, "~> 0.21.2", only: :dev, runtime: :false},
-      {:multiverses, "~> 0.6.0", runtime: :false},
-      {:multiverses_pubsub, "~> 0.2.0", runtime: :false},
+      {:multiverses, "~> 0.7.0", runtime: (Mix.env() == :test)},
+      {:multiverses_pubsub, "~> 0.3.0", runtime: (Mix.env() == :test)},
       {:net_address, "~> 0.2.0", only: :test},
 
       # direct dependencies

@@ -58,3 +58,7 @@
 ## 0.5.1
 
 - improvement of tests and better Multiverses integration
+
+## 0.6.0
+
+- update for use use with Multiverses 0.7.0
